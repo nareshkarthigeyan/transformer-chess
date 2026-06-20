@@ -1,7 +1,9 @@
-import io
+import os
+import glob
 import chess
 import chess.pgn
 import torch
+from torch.utils.data import Dataset
 
 PIECE_TO_TOKEN = {
     None: 0,
@@ -10,7 +12,6 @@ PIECE_TO_TOKEN = {
 }
 
 def board_to_sequence(board: chess.Board) -> torch.Tensor:
-    """Converts an 8x8 chess board into a 64-element sequence of tokens."""
     sequence = []
     for square in chess.SQUARES:
         piece = board.piece_at(square)
@@ -24,29 +25,47 @@ def board_to_sequence(board: chess.Board) -> torch.Tensor:
     return torch.tensor(sequence, dtype=torch.long)
 
 def move_to_id(move: chess.Move) -> int:
-    """Encodes a move into a unique integer ID (0 to 4095)."""
     return move.from_square * 64 + move.to_square
 
-def id_to_move(move_id: int) -> chess.Move:
-    """Decodes a unique integer ID back into a chess.Move."""
-    from_square = move_id // 64
-    to_square = move_id % 64
-    return chess.Move(from_square, to_square)
-
-def process_pgn_games(pgn_string: str):
-    """Parses a PGN string into features (X) and labels (Y)."""
-    pgn_file = io.StringIO(pgn_string)
-    X, Y = [], []
-    
-    while True:
-        game = chess.pgn.read_game(pgn_file)
-        if game is None:
-            break
+class ChessPGNDataset(Dataset):
+    def __init__(self, data_dir: str, max_games_per_file: int = 1000):
+        """
+        Scans a directory for all .pgn files and builds a consolidated dataset.
+        """
+        self.X = []
+        self.Y = []
         
-        board = game.board()
-        for move in game.mainline_moves():
-            X.append(board_to_sequence(board))
-            Y.append(move_to_id(move))
-            board.push(move)
+        # Find all .pgn files in the directory
+        pgn_files = glob.glob(os.path.join(data_dir, "*.pgn"))
+        print(f"Found {len(pgn_files)} PGN files to process.")
+        
+        for file_path in pgn_files:
+            file_name = os.path.basename(file_path)
+            print(f"Processing: {file_name}...")
             
-    return torch.stack(X), torch.tensor(Y, dtype=torch.long)
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as pgn:
+                game_count = 0
+                while game_count < max_games_per_file:
+                    game = chess.pgn.read_game(pgn)
+                    if game is None:
+                        break # End of this specific file
+                    
+                    board = game.board()
+                    for move in game.mainline_moves():
+                        if move in board.legal_moves:
+                            self.X.append(board_to_sequence(board))
+                            self.Y.append(move_to_id(move))
+                            board.push(move)
+                    
+                    game_count += 1
+                    
+            print(f" Loaded {game_count} games from {file_name}")
+                    
+        print(f"\n All files consolidated!")
+        print(f"Total board states in dataset: {len(self.X)}")
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.Y[idx]

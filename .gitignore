@@ -1,0 +1,79 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Packaging / build artifacts
+build/
+dist/
+site/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Testing / linting caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Jupyter / IPython
+profile_default/
+ipython_config.py
+
+# ML / DL artifacts
+checkpoints/
+*.ckpt
+*.pth
+*.pt
+*.onnx
+*.h5
+*.keras
+wandb/
+mlruns/
+lightning_logs/
+
+# Data / outputs
+data/
+datasets/
+outputs/
+results/
+artifacts/
+
+# Model caches / downloads
+.cache/
+*.cache
+
+# Logs
+logs/
+*.log
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets / env files
+.env
+.env.*
+*.pem
+*.key
