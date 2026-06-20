@@ -12,7 +12,7 @@ def main():
 
     # --- Hyperparameters ---
     DATA_DIR = "data"               # Directory containing your 35 PGN files
-    MAX_GAMES_PER_FILE = 20        # Caps games per file so your Mac memory stays happy
+    MAX_GAMES_PER_FILE = 200        # Caps games per file so your Mac memory stays happy
     BATCH_SIZE = 512                # Increased batch size for faster MPS processing
     LR = 5e-4
     EPOCHS = 10
@@ -37,11 +37,11 @@ def main():
     for epoch in range(EPOCHS):
         avg_loss = train_one_epoch(model, dataloader, criterion, optimizer, device)
         print(f"Epoch [{epoch+1}/{EPOCHS}] -> Average Loss: {avg_loss:.4f}")
-        
+
         if (epoch + 1) % 2 == 0:
             save_checkpoint(model, optimizer, epoch+1, avg_loss)
 
-    print("\n Training complete! Ready for evaluation.")
+    print("\nTraining complete. Ready for evaluation.")
 
 if __name__ == "__main__":
     main()

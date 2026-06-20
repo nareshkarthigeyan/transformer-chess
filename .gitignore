@@ -52,6 +52,7 @@ datasets/
 outputs/
 results/
 artifacts/
+exports/
 
 # Model caches / downloads
 .cache/

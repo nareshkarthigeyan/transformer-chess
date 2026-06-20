@@ -61,7 +61,7 @@ class ChessPGNDataset(Dataset):
                     
             print(f" Loaded {game_count} games from {file_name}")
                     
-        print(f"\n All files consolidated!")
+        print("\nAll files consolidated.")
         print(f"Total board states in dataset: {len(self.X)}")
 
     def __len__(self):

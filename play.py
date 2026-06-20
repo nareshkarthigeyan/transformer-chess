@@ -20,8 +20,8 @@ def play_against_ai():
 
     # 2. Setup the chess board loop
     board = chess.Board()
-    print("\n Welcome to Chess vs. Transformer AI! \n")
-    
+    print("\nWelcome to Chess vs. Transformer AI.\n")
+
     while not board.is_game_over():
         print("\n--- Current Board State ---")
         print(board)
@@ -53,7 +53,7 @@ def play_against_ai():
             print(f"AI plays: {ai_move}")
             board.push(ai_move)
             
-    print("\n Game Over!")
+    print("\nGame over.")
     print("Final Result:", board.result())
 
 if __name__ == "__main__":

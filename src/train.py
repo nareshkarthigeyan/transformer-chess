@@ -31,4 +31,4 @@ def save_checkpoint(model, optimizer, epoch, loss, path="checkpoint.pt"):
         'optimizer_state_dict': optimizer.state_dict(),
         'loss': loss,
     }, path)
-    print(f" Saved checkpoint to {path}")
+    print(f"Saved checkpoint to {path}")
