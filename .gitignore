@@ -78,3 +78,6 @@ Thumbs.db
 .env.*
 *.pem
 *.key
+
+
+/exports

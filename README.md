@@ -1,3 +1,12 @@
+---
+license: mit
+tags:
+  - chess
+  - transformer
+  - reinforcement-learning
+pipeline_tag: reinforcement-learning
+---
+
 # Transformer Chess
 
 Transformer Chess is a compact research workspace for training and evaluating a

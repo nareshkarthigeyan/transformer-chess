@@ -34,6 +34,7 @@ class ChessPGNDataset(Dataset):
         """
         self.X = []
         self.Y = []
+        self.fens = []  # Added to track FENs for Pillar 2 masking
         
         # Find all .pgn files in the directory
         pgn_files = glob.glob(os.path.join(data_dir, "*.pgn"))
@@ -55,6 +56,7 @@ class ChessPGNDataset(Dataset):
                         if move in board.legal_moves:
                             self.X.append(board_to_sequence(board))
                             self.Y.append(move_to_id(move))
+                            self.fens.append(board.fen())  # Save current FEN before pushing move
                             board.push(move)
                     
                     game_count += 1
@@ -68,4 +70,15 @@ class ChessPGNDataset(Dataset):
         return len(self.X)
 
     def __getitem__(self, idx):
-        return self.X[idx], self.Y[idx]
+        # Simply pull from your clean arrays (tensors are built inside __init__ or on the fly)
+        board_seq = self.X[idx]
+        move_id = self.Y[idx]
+        fen = self.fens[idx]
+
+        # Handle formatting conversions safely
+        if not isinstance(board_seq, torch.Tensor):
+            board_seq = torch.tensor(board_seq, dtype=torch.long)
+        if not isinstance(move_id, torch.Tensor):
+            move_id = torch.tensor(move_id, dtype=torch.long)
+
+        return board_seq, move_id, fen

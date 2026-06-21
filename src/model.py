@@ -1,37 +1,50 @@
+# src/model.py
 import torch
 import torch.nn as nn
 
 class ChessTransformer(nn.Module):
-    def __init__(self, vocab_size=13, d_model=128, nhead=4, num_layers=4, num_classes=4096):
+    def __init__(self, d_model=128, nhead=4, num_layers=4, dim_feedforward=512):
         super(ChessTransformer, self).__init__()
         
-        self.piece_embedding = nn.Embedding(vocab_size, d_model)
-        self.pos_embedding = nn.Embedding(64, d_model)
+        # 13 piece tokens (0=empty, 1-6=White, 7-12=Black)
+        self.piece_embedding = nn.Embedding(13, d_model)
+        
+        # PILLAR 1: 2D Spatial Grid Embeddings
+        self.row_embedding = nn.Embedding(8, d_model)
+        self.col_embedding = nn.Embedding(8, d_model)
+        
+        # Build coordinate static lookup tensors for quick mapping
+        self.register_buffer("row_indices", torch.arange(8).repeat_interleave(8))
+        self.register_buffer("col_indices", torch.arange(8).repeat(8))
         
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, 
             nhead=nhead, 
-            dim_feedforward=d_model * 4, 
-            dropout=0.1,
-            activation='gelu',
+            dim_feedforward=dim_feedforward, 
+            activation='gelu', 
             batch_first=True
         )
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         
-        self.fc_out = nn.Sequential(
-            nn.Linear(64 * d_model, 512),
-            nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(512, num_classes)
-        )
-        
+        # Output classification head maps to 4,096 explicit move combinations
+        self.fc_out = nn.Linear(64 * d_model, 4096)
+
     def forward(self, x):
-        batch_size, seq_len = x.shape
-        positions = torch.arange(0, seq_len, device=x.device).unsqueeze(0).expand(batch_size, -1)
+        batch_size = x.size(0)
         
-        x = self.piece_embedding(x) + self.pos_embedding(positions)
-        x = self.transformer_encoder(x)
-        x = x.view(batch_size, -1)
-        logits = self.fc_out(x)
+        # 1. Fetch categorical piece representations
+        x_emb = self.piece_embedding(x)  # Shape: (Batch, 64, d_model)
         
-        return logits
+        # 2. Extract and fuse 2D geometric vector signals
+        rows = self.row_embedding(self.row_indices).unsqueeze(0).expand(batch_size, -1, -1)
+        cols = self.col_embedding(self.col_indices).unsqueeze(0).expand(batch_size, -1, -1)
+        
+        # Combine everything together
+        x = x_emb + rows + cols  # Shape: (Batch, 64, d_model)
+        
+        # 3. Process spatial context correlations through self-attention
+        enc_out = self.transformer_encoder(x)
+        enc_out = enc_out.contiguous().view(batch_size, -1)
+        
+        # 4. Return raw logits
+        return self.fc_out(enc_out)

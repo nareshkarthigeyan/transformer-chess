@@ -35,7 +35,7 @@ def main():
     # 3. Training Loop
     print("\nCommencing Consolidated Training Sequence...")
     for epoch in range(EPOCHS):
-        avg_loss = train_one_epoch(model, dataloader, criterion, optimizer, device)
+        avg_loss = train_one_epoch(model, dataloader, optimizer, criterion, device)
         print(f"Epoch [{epoch+1}/{EPOCHS}] -> Average Loss: {avg_loss:.4f}")
 
         if (epoch + 1) % 2 == 0:
