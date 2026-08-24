@@ -1,206 +1,390 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <title>Transformer Chess Engine Workspace</title>
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css"
-    />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Transformer Chess / Model Playground</title>
     <style>
+      :root {
+        --ink: #e9edf4;
+        --muted: #8d98aa;
+        --dim: #5d6879;
+        --canvas: #0c111a;
+        --panel: #131a26;
+        --panel-2: #182131;
+        --line: #263244;
+        --lime: #c4f36a;
+        --orange: #ff9966;
+        --cream: #f1e8d7;
+        --brown: #a96849;
+        --blue: #80a7ff;
+        --red: #ff7c81;
+      }
+
+      * { box-sizing: border-box; }
+      html { background: var(--canvas); }
       body {
-        background: #1e1e1e;
-        color: #fff;
-        padding-top: 30px;
+        margin: 0;
+        min-width: 320px;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 15% 8%, rgba(128, 167, 255, .08), transparent 31rem),
+          radial-gradient(circle at 88% 5%, rgba(196, 243, 106, .055), transparent 27rem),
+          var(--canvas);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: .01em;
       }
-      #myBoard {
-        width: 440px;
-        margin: 0 auto;
-        box-shadow: 0 5px 25px rgba(0, 0, 0, 0.6);
+
+      button, select, input { font: inherit; }
+      button { cursor: pointer; }
+      .app-shell { max-width: 1500px; margin: 0 auto; padding: 0 28px 54px; }
+      .topbar {
+        height: 76px; display: flex; align-items: center; justify-content: space-between;
+        border-bottom: 1px solid var(--line); gap: 24px;
       }
-      .control-panel {
-        background: #2d2d2d;
-        padding: 20px;
-        border-radius: 8px;
-        border: 1px solid #444;
+      .brand { display: flex; align-items: center; gap: 12px; min-width: max-content; }
+      .brand-mark { width: 27px; height: 27px; border: 1px solid var(--lime); display: grid; place-items: center; transform: rotate(45deg); }
+      .brand-mark::after { content: ""; width: 8px; height: 8px; background: var(--lime); }
+      .brand-copy { line-height: 1.05; }
+      .brand-name { font-size: 12px; letter-spacing: .22em; font-weight: 800; }
+      .brand-sub { font-size: 10px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; margin-top: 4px; }
+      .tabs { display: flex; gap: 3px; height: 100%; align-items: center; }
+      .tab-button { color: var(--muted); background: none; border: 0; padding: 11px 14px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; position: relative; }
+      .tab-button.active { color: var(--ink); }
+      .tab-button.active::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px; background: var(--lime); }
+      .runtime { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+      .runtime-dot { width: 7px; height: 7px; border-radius: 99px; background: var(--lime); box-shadow: 0 0 0 4px rgba(196,243,106,.1); }
+      .runtime-dot.warn { background: var(--orange); box-shadow: 0 0 0 4px rgba(255,153,102,.1); }
+
+      .tab-panel { display: none; padding-top: 40px; }
+      .tab-panel.active { display: block; }
+      .eyebrow { color: var(--lime); font: 700 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .2em; text-transform: uppercase; }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: clamp(30px, 4vw, 52px); line-height: .98; letter-spacing: -.055em; font-weight: 750; }
+      h2 { font-size: 25px; letter-spacing: -.035em; }
+      h3 { font-size: 14px; letter-spacing: -.01em; }
+      .intro { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-bottom: 32px; }
+      .intro p { max-width: 520px; color: var(--muted); line-height: 1.65; font-size: 13px; }
+      .panel { background: rgba(19, 26, 38, .82); border: 1px solid var(--line); border-radius: 14px; }
+      .panel-heading { display: flex; justify-content: space-between; align-items: center; padding: 17px 18px; border-bottom: 1px solid var(--line); }
+      .panel-heading small { color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; letter-spacing: .12em; }
+      .panel-body { padding: 18px; }
+      .play-layout { display: grid; grid-template-columns: minmax(480px, .94fr) minmax(420px, 1.06fr); gap: 18px; align-items: start; }
+      .board-panel { padding: 22px; }
+      .board-topline { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+      .turn-label { font-size: 12px; color: var(--muted); }
+      .turn-label strong { color: var(--ink); font-weight: 650; }
+      .mode-pill, .status-pill, .provider-badge { display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; letter-spacing: .08em; }
+      .mode-pill::before, .provider-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--lime); }
+      .provider-badge.assist::before { background: var(--orange); }
+      .chessboard { width: min(100%, 650px); aspect-ratio: 1; display: grid; grid-template-columns: repeat(8, 1fr); overflow: hidden; border-radius: 5px; box-shadow: 0 17px 45px rgba(0,0,0,.28); border: 6px solid #202a39; background: #202a39; }
+      .square { appearance: none; border: 0; position: relative; display: grid; place-items: center; padding: 0; aspect-ratio: 1; }
+      .square.light { background: var(--cream); }
+      .square.dark { background: var(--brown); }
+      .square.last-move { box-shadow: inset 0 0 0 999px rgba(255, 211, 87, .22); }
+      .square.selected { box-shadow: inset 0 0 0 4px var(--lime); z-index: 1; }
+      .square.target::after { content: ""; width: 23%; height: 23%; border-radius: 50%; background: rgba(12,17,26,.32); position: absolute; }
+      .square.target.capture::after { width: 78%; height: 78%; background: none; border: 4px solid rgba(255,255,255,.65); }
+      .piece { font-family: "Times New Roman", Georgia, serif; font-size: clamp(30px, 6.7vw, 66px); line-height: 1; user-select: none; transform: translateY(-2%); }
+      .piece.white { color: #fffdf5; text-shadow: 0 2px 0 rgba(63,35,25,.8), 0 3px 8px rgba(20,10,5,.35); }
+      .piece.black { color: #19212c; text-shadow: 0 1px 0 rgba(255,255,255,.12); }
+      .coord { position: absolute; font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .62; pointer-events: none; }
+      .coord.file { right: 5px; bottom: 3px; }
+      .coord.rank { left: 5px; top: 3px; }
+      .light .coord { color: var(--brown); }
+      .dark .coord { color: var(--cream); }
+      .board-foot { margin-top: 17px; display: flex; align-items: center; justify-content: space-between; gap: 15px; min-height: 25px; }
+      .board-message { color: var(--muted); font-size: 12px; }
+      .board-message strong { color: var(--ink); }
+      .button-row { display: flex; gap: 8px; }
+      .button { border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--ink); padding: 10px 13px; font-size: 11px; }
+      .button:hover { border-color: #50617b; }
+      .button.primary { background: var(--lime); color: #17200d; border-color: var(--lime); font-weight: 750; }
+      .button.primary:hover { background: #d7ff84; }
+      .stack { display: grid; gap: 18px; }
+      .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .field { display: grid; gap: 7px; }
+      .field.full { grid-column: 1 / -1; }
+      .field label { color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; }
+      select { width: 100%; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 11px; outline: none; }
+      select:focus { border-color: var(--lime); }
+      input[type="range"] { width: 100%; accent-color: var(--lime); }
+      .range-line { display: flex; align-items: center; gap: 12px; }
+      .range-value { min-width: 42px; text-align: right; color: var(--lime); font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .assist-note { margin-top: 9px; color: var(--dim); font-size: 11px; line-height: 1.45; }
+      .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .metric { background: var(--panel-2); border: 1px solid var(--line); padding: 13px; border-radius: 9px; }
+      .metric label { display: block; color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 7px; }
+      .metric strong { display: block; font: 700 18px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .metric strong.positive { color: var(--lime); }
+      .metric strong.blue { color: var(--blue); }
+      .telemetry-copy { color: var(--muted); font-size: 12px; line-height: 1.55; }
+      .telemetry-copy strong { color: var(--ink); }
+      .move-list { display: grid; gap: 0; max-height: 260px; overflow-y: auto; }
+      .move-row { display: grid; grid-template-columns: 34px 44px minmax(54px, 1fr) auto; gap: 10px; align-items: center; border-bottom: 1px solid rgba(38,50,68,.7); padding: 9px 2px; font-size: 12px; }
+      .move-row:last-child { border-bottom: 0; }
+      .move-no { color: var(--dim); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .move-san { color: var(--ink); font-weight: 650; }
+      .move-actor { color: var(--muted); }
+      .move-provider { color: var(--dim); font-size: 10px; text-align: right; }
+      .empty { color: var(--dim); font-size: 12px; padding: 10px 0; }
+      .lens-strip { display: grid; gap: 7px; }
+      .lens-row { display: grid; grid-template-columns: 99px minmax(60px, 1fr) 61px; align-items: center; gap: 10px; }
+      .lens-label { color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
+      .lens-bar { height: 7px; border-radius: 99px; background: #253143; overflow: hidden; }
+      .lens-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--blue), var(--lime)); }
+      .lens-move { color: var(--ink); text-align: right; font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .section-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
+      .section-row small { color: var(--muted); font-size: 11px; }
+
+      .architecture-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(330px, .65fr); gap: 18px; }
+      .architecture-canvas { min-height: 490px; padding: 28px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+      .arch-flow { width: 100%; display: grid; gap: 8px; }
+      .arch-node { min-height: 74px; border: 1px solid var(--line); background: var(--panel-2); border-radius: 11px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 18px; position: relative; }
+      .arch-node:not(:last-child)::after { content: "↓"; position: absolute; left: 50%; bottom: -19px; color: var(--dim); font-size: 16px; z-index: 2; }
+      .arch-node.accent { border-color: rgba(196,243,106,.45); background: linear-gradient(90deg, rgba(196,243,106,.08), var(--panel-2)); }
+      .arch-node.orange { border-color: rgba(255,153,102,.45); background: linear-gradient(90deg, rgba(255,153,102,.07), var(--panel-2)); }
+      .arch-title { font-weight: 700; font-size: 13px; }
+      .arch-detail { color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; line-height: 1.55; }
+      .arch-icon { display: inline-grid; grid-template-columns: repeat(4, 6px); gap: 3px; margin-right: 10px; vertical-align: middle; }
+      .arch-icon i { width: 6px; height: 6px; background: var(--blue); border-radius: 1px; }
+      .arch-icon i:nth-child(2n) { background: var(--lime); }
+      .fact-list { display: grid; gap: 0; }
+      .fact { display: flex; justify-content: space-between; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+      .fact:last-child { border-bottom: 0; }
+      .fact span { color: var(--muted); }
+      .fact strong { font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+      .arch-note { margin-top: 16px; padding: 13px; color: var(--muted); background: rgba(128,167,255,.06); border-left: 2px solid var(--blue); font-size: 11px; line-height: 1.55; }
+
+      .lens-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .7fr); gap: 18px; }
+      .lens-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .lens-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 11px; padding: 15px; min-height: 160px; }
+      .lens-card.final { border-color: rgba(196,243,106,.48); }
+      .lens-card-head { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; letter-spacing: .09em; }
+      .lens-confidence { color: var(--lime); }
+      .lens-card-move { margin: 20px 0 13px; font: 750 30px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.06em; }
+      .top-move { display: grid; grid-template-columns: 33px 1fr 42px; align-items: center; gap: 8px; margin-top: 8px; font-size: 11px; }
+      .top-move .rank { color: var(--dim); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .top-move .bar { height: 5px; border-radius: 99px; background: #263244; overflow: hidden; }
+      .top-move .bar i { display: block; height: 100%; border-radius: inherit; background: var(--blue); }
+      .top-move .prob { color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+      .lens-side-copy { color: var(--muted); font-size: 12px; line-height: 1.65; }
+      .legend { display: flex; gap: 14px; margin-top: 18px; color: var(--muted); font-size: 10px; }
+      .legend span { display: flex; align-items: center; gap: 6px; }
+      .legend i { display: block; width: 7px; height: 7px; border-radius: 2px; background: var(--blue); }
+      .legend .green { background: var(--lime); }
+
+      .toast { position: fixed; right: 24px; bottom: 22px; max-width: 360px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; background: #172131; color: var(--ink); font-size: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.3); transform: translateY(20px); opacity: 0; pointer-events: none; transition: .2s ease; }
+      .toast.show { transform: translateY(0); opacity: 1; }
+      .toast.error { border-color: rgba(255,124,129,.5); color: #ffd0d2; }
+      footer { padding-top: 36px; color: var(--dim); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; display: flex; justify-content: space-between; }
+
+      @media (max-width: 1050px) {
+        .play-layout, .architecture-grid, .lens-layout { grid-template-columns: 1fr; }
+        .board-panel { max-width: 710px; margin: 0 auto; width: 100%; }
       }
-      .log-box {
-        background: #111;
-        height: 180px;
-        overflow-y: auto;
-        font-family: monospace;
-        font-size: 12px;
-        padding: 10px;
-        border-radius: 4px;
-        border: 1px solid #333;
-      }
-      .result-highlight {
-        background: #223e22;
-        border: 1px solid #3e6b3e;
-        padding: 12px;
-        border-radius: 6px;
-      }
-      .status-error {
-        color: #ff8f8f;
+      @media (max-width: 720px) {
+        .app-shell { padding: 0 14px 35px; }
+        .topbar { height: auto; min-height: 72px; flex-wrap: wrap; padding: 14px 0 0; }
+        .tabs { order: 3; width: 100%; height: 42px; overflow-x: auto; }
+        .tab-button { padding: 8px 10px; }
+        .tab-button.active::after { left: 10px; right: 10px; }
+        .runtime { margin-left: auto; }
+        .tab-panel { padding-top: 28px; }
+        .intro { display: block; margin-bottom: 22px; }
+        .intro p { margin-top: 13px; }
+        .board-panel { padding: 12px; }
+        .control-grid, .lens-cards { grid-template-columns: 1fr; }
+        .field.full { grid-column: auto; }
+        .architecture-canvas { padding: 14px; min-height: 400px; }
+        footer { display: block; line-height: 1.7; }
       }
     </style>
   </head>
   <body>
-    <div class="container-fluid px-5">
-      <div class="row mb-3">
-        <div class="col-12 text-center">
-          <h2>Model Tournament Live Dashboard</h2>
-          <p class="text-muted">
-            Real-time visualization tracking your background tournament thread
-          </p>
-        </div>
-      </div>
-
-      <div class="row justify-content-center g-4">
-        <div class="col-md-5">
-          <div id="myBoard"></div>
-          <div id="liveMoveFeed" class="text-center mt-3 text-warning fw-bold">
-            Board Idling...
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <div class="brand-copy">
+            <div class="brand-name">TRANSFORMER / CHESS</div>
+            <div class="brand-sub">model playground · live inference</div>
           </div>
         </div>
+        <nav class="tabs" aria-label="Main navigation">
+          <button class="tab-button active" data-tab="play">Playground</button>
+          <button class="tab-button" data-tab="architecture">Architecture</button>
+          <button class="tab-button" data-tab="lens">Logit lens</button>
+        </nav>
+        <div class="runtime"><span class="runtime-dot" id="runtimeDot"></span><span id="runtimeText">connecting</span></div>
+      </header>
 
-        <div class="col-md-6">
-          <div class="control-panel">
-            <h4>Tournament Settings</h4>
-            <hr style="border-color: #444" />
+      <section class="tab-panel active" id="tab-play">
+        <div class="intro">
+          <div><div class="eyebrow">01 / interactive inference</div><h1>Play the model.<br /><span style="color:var(--lime)">Watch it think.</span></h1></div>
+          <p>A small transformer reads the board as 64 spatial tokens, scores legal moves, and exposes its decision at every encoder depth. Make a move to stream a fresh readout.</p>
+        </div>
 
-            <div class="row align-items-end mb-3">
-              <div class="col-md-7">
-                <label class="form-label">Target Evaluation Agent:</label>
-                <select
-                  id="oppSelect"
-                  class="form-select bg-dark text-white border-secondary"
-                >
-                  <option value="random">Pure Random Bot (Elo ~100)</option>
-                  <option value="stockfish_depth_1">
-                    Stockfish Depth 1 (Elo ~600)
-                  </option>
-                </select>
-              </div>
-              <div class="col-md-5">
-                <button id="runBtn" class="btn btn-success w-100">
-                  Run 20-Game Loop
-                </button>
-              </div>
-            </div>
+        <div class="play-layout">
+          <section class="panel board-panel">
+            <div class="board-topline"><div class="turn-label">TURN <strong id="turnText">WHITE</strong></div><span class="mode-pill" id="modePill">READY</span></div>
+            <div class="chessboard" id="board" aria-label="Chess board"></div>
+            <div class="board-foot"><div class="board-message" id="boardMessage">Your move. Click a piece, then its destination.</div><div class="button-row"><button class="button" id="undoButton">Undo</button><button class="button primary" id="newGameButton">New game</button></div></div>
+          </section>
 
-            <h5 class="mt-4">Live Game Series Logs</h5>
-            <div id="logBox" class="log-box mb-3">
-              Logs will populate as matches finish...
-            </div>
-
-            <div id="finalMetrics" class="result-highlight d-none mt-3">
-              <h5 class="text-success text-center">
-                Final benchmark results calculated
-              </h5>
-              <div class="row text-center mt-2">
-                <div class="col-4">
-                  <h6>Record (W-L-D)</h6>
-                  <span id="resRecord" class="fw-bold fs-5"></span>
-                </div>
-                <div class="col-4">
-                  <h6>Win %</h6>
-                  <span id="resPct" class="fw-bold fs-5"></span>
-                </div>
-                <div class="col-4">
-                  <h6>Estimated ELO</h6>
-                  <span id="resElo" class="fw-bold text-warning fs-5"></span>
+          <div class="stack">
+            <section class="panel">
+              <div class="panel-heading"><h3>Match setup</h3><small>provider routing</small></div>
+              <div class="panel-body">
+                <div class="control-grid">
+                  <div class="field"><label for="colorSelect">You play</label><select id="colorSelect"><option value="white">White</option><option value="black">Black</option></select></div>
+                  <div class="field"><label for="providerSelect">Engine provider</label><select id="providerSelect"><option value="transformer">Transformer only</option><option value="hybrid" selected>Hybrid · visible assist</option><option value="stockfish">Stockfish only</option></select></div>
+                  <div class="field full" id="assistField"><label for="assistRange">Stockfish assist rate · hybrid mode</label><div class="range-line"><input id="assistRange" type="range" min="0.5" max="0.7" step="0.05" value="0.6" /><output class="range-value" id="assistValue">60%</output></div><div class="assist-note">The active provider is shown on every engine move. Stockfish is an optional, isolated provider for demo stability.</div></div>
                 </div>
               </div>
-            </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading"><h3>Current readout</h3><span class="provider-badge" id="providerBadge">waiting</span></div>
+              <div class="panel-body" id="telemetryPanel"><div class="empty">Play a move to inspect the model’s policy, value, and layer convergence.</div></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading"><h3>Move history</h3><small id="moveCount">0 plies</small></div>
+              <div class="panel-body" style="padding-top:8px"><div class="move-list" id="moveList"><div class="empty">No moves yet.</div></div></div>
+            </section>
           </div>
         </div>
-      </div>
+      </section>
+
+      <section class="tab-panel" id="tab-architecture">
+        <div class="intro"><div><div class="eyebrow">02 / inside the model</div><h1>One board.<br /><span style="color:var(--blue)">Four passes.</span></h1></div><p>The architecture is deliberately compact: each square is a token, geometry is added as learned row and column embeddings, and self-attention lets the board pieces exchange context.</p></div>
+        <div class="architecture-grid">
+          <section class="panel architecture-canvas"><div class="arch-flow">
+            <div class="arch-node"><div class="arch-title"><span class="arch-icon"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Board encoding</div><div class="arch-detail">64 square tokens<br />13 piece categories</div></div>
+            <div class="arch-node"><div class="arch-title">Spatial fusion</div><div class="arch-detail">piece + row + column<br />128-dimensional stream</div></div>
+            <div class="arch-node accent"><div class="arch-title">Transformer encoder × <span id="archLayers">4</span></div><div class="arch-detail"><span id="archHeads">4</span> attention heads · GELU<br />contextual board representation</div></div>
+            <div class="arch-node"><div class="arch-title">Policy head</div><div class="arch-detail">linear projection<br /><span id="archPolicy">4,096</span> from/to logits</div></div>
+            <div class="arch-node orange"><div class="arch-title">Value head</div><div class="arch-detail">MLP + tanh<br />side-to-move value ∈ [−1, 1]</div></div>
+          </div></section>
+          <section class="panel"><div class="panel-heading"><h3>Live model facts</h3><small>loaded at runtime</small></div><div class="panel-body"><div class="fact-list">
+            <div class="fact"><span>Parameters</span><strong id="archParams">—</strong></div><div class="fact"><span>Token sequence</span><strong id="archTokens">64</strong></div><div class="fact"><span>Model width</span><strong id="archWidth">128</strong></div><div class="fact"><span>Policy space</span><strong id="archPolicyFact">4,096</strong></div><div class="fact"><span>Inference device</span><strong id="archDevice">—</strong></div><div class="fact"><span>Checkpoint</span><strong id="archCheckpoint">—</strong></div>
+          </div><div class="arch-note">The lens reuses the trained policy head on each encoder stream. That makes intermediate predictions comparable without inventing a second model.</div></div></section>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tab-lens">
+        <div class="intro"><div><div class="eyebrow">03 / residual stream probe</div><h1>See the move<br /><span style="color:var(--orange)">form.</span></h1></div><p>Each card projects one stream through the policy head, masks to legal moves, and shows the top candidates. Early layers can be uncertain; later layers should sharpen the decision.</p></div>
+        <div class="lens-layout">
+          <section class="panel"><div class="panel-heading"><h3>Layer-by-layer policy</h3><small id="lensPosition">waiting for a position</small></div><div class="panel-body"><div class="lens-cards" id="lensCards"><div class="empty">Play a move to populate the lens.</div></div></div></section>
+          <section class="panel"><div class="panel-heading"><h3>How to read this</h3><small>live probe</small></div><div class="panel-body"><p class="lens-side-copy">The bars show the probability assigned to each layer’s top legal move. Entropy measures how spread out the layer’s legal-move distribution is: lower means more decisive.</p><div class="legend"><span><i></i> confidence</span><span><i class="green"></i> final layer</span></div><div class="lens-strip" id="lensStrip" style="margin-top:28px"><div class="empty">No lens data yet.</div></div></div></section>
+        </div>
+      </section>
+
+      <footer><span>TRANSFORMER / CHESS · research workspace</span><span>python-chess · pytorch · flask</span></footer>
     </div>
-
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+    <div class="toast" id="toast"></div>
 
     <script>
-      var board = Chessboard("myBoard", {
-        position: "start",
-        pieceTheme:
-          "https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png",
-      });
-      var statusInterval = null;
+      const glyphs = { p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚", P: "♙", N: "♘", B: "♗", R: "♖", Q: "♕", K: "♔" };
+      let state = null;
+      let selected = null;
+      let toastTimer = null;
 
-      function pollStatus() {
-        fetch("/get_status")
-          .then((res) => res.json())
-          .then((data) => {
-            // 1. Keep layout in sync with current fen while running
-            if (data.is_running) {
-              board.position(data.current_fen);
-              if (data.last_move) {
-                $("#liveMoveFeed").html(
-                  `Game #${data.current_game}/20 | ${data.mover} played: ${data.last_move}`,
-                );
-              } else {
-                $("#liveMoveFeed").html(
-                  `Game #${data.current_game}/20 | Setting up board...`,
-                );
-              }
-            }
+      const $ = (id) => document.getElementById(id);
+      const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"]/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'\"':"&quot;"}[char]));
 
-            // 2. Render completed game history logs dynamically
-            if (data.logs && data.logs.length > 0) {
-              var htmlLogs = "";
-              data.logs.forEach((log) => {
-                htmlLogs += "<div>" + log + "</div>";
-              });
-              $("#logBox").html(htmlLogs);
-              $("#logBox").scrollTop($("#logBox")[0].scrollHeight);
-            }
-
-            // 3. Catch structural termination and output metrics card
-            if (!data.is_running && data.final_results) {
-              clearInterval(statusInterval);
-              board.position(data.current_fen);
-              $("#runBtn").prop("disabled", false);
-              $("#liveMoveFeed").html("Tournament sequence complete.");
-
-              $("#resRecord").html(data.final_results.record);
-              $("#resPct").html(data.final_results.win_pct);
-              $("#resElo").html(data.final_results.elo);
-              $("#finalMetrics").removeClass("d-none");
-            } else if (!data.is_running && data.logs && data.logs.length > 0) {
-              clearInterval(statusInterval);
-              $("#runBtn").prop("disabled", false);
-              $("#liveMoveFeed")
-                .addClass("status-error")
-                .html("Tournament stopped before final metrics were produced.");
-            }
-          });
+      function showToast(message, error = false) {
+        const toast = $("toast"); toast.textContent = message; toast.className = `toast show${error ? " error" : ""}`;
+        clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.className = "toast", 3200);
       }
 
-      $("#runBtn").on("click", function () {
-        $("#runBtn").prop("disabled", true);
-        $("#liveMoveFeed").removeClass("status-error");
-        $("#finalMetrics").addClass("d-none");
-        $("#logBox").html(
-          '<div class="text-muted">Starting background processing threads...</div>',
-        );
+      function parseFen(fen) {
+        const rows = fen.split(" ")[0].split("/"); const board = {};
+        rows.forEach((row, rowIndex) => { let file = 0; for (const token of row) { if (/[1-8]/.test(token)) file += Number(token); else { board[`${String.fromCharCode(97 + file)}${8 - rowIndex}`] = token; file++; } } });
+        return board;
+      }
 
-        fetch("/start_tournament", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ opponent_type: $("#oppSelect").val() }),
-        })
-          .then((res) => res.json())
-          .then(() => {
-            // Check status every 200ms to smoothly render the live updates
-            statusInterval = setInterval(pollStatus, 200);
-          });
-      });
+      function orderedSquares() {
+        const black = state?.player_color === "black"; const ranks = black ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1]; const files = black ? ["h","g","f","e","d","c","b","a"] : ["a","b","c","d","e","f","g","h"];
+        return ranks.flatMap((rank) => files.map((file) => `${file}${rank}`));
+      }
+
+      function renderBoard() {
+        if (!state) return;
+        const board = parseFen(state.fen); const last = state.history?.at(-1)?.uci || ""; const lastSquares = last ? [last.slice(0,2), last.slice(2,4)] : [];
+        const legal = state.legal_moves || []; const html = orderedSquares().map((square, index) => {
+          const fileIndex = index % 8; const rankIndex = Math.floor(index / 8); const light = (fileIndex + rankIndex) % 2 === 0; const piece = board[square];
+          const isTarget = selected && legal.some((move) => move.startsWith(selected) && move.slice(2,4) === square); const isCapture = isTarget && !!piece; const isLast = lastSquares.includes(square);
+          const fileLabel = (rankIndex === 7) ? square[0] : ""; const rankLabel = (fileIndex === 0) ? square[1] : "";
+          return `<button class="square ${light ? "light" : "dark"} ${selected === square ? "selected" : ""} ${isTarget ? `target ${isCapture ? "capture" : ""}` : ""} ${isLast ? "last-move" : ""}" data-square="${square}" aria-label="${square}">${piece ? `<span class="piece ${piece === piece.toUpperCase() ? "white" : "black"}">${glyphs[piece]}</span>` : ""}<span class="coord file">${fileLabel}</span><span class="coord rank">${rankLabel}</span></button>`;
+        }).join("");
+        $("board").innerHTML = html; $("board").querySelectorAll(".square").forEach((square) => square.addEventListener("click", () => clickSquare(square.dataset.square)));
+      }
+
+      function clickSquare(square) {
+        if (!state || state.status === "finished" || state.turn !== state.player_color) return;
+        const legal = state.legal_moves || [];
+        if (selected) {
+          const candidates = legal.filter((move) => move.startsWith(selected) && move.slice(2,4) === square);
+          if (candidates.length) { selected = null; sendMove(candidates.find((move) => move.endsWith("q")) || candidates[0]); return; }
+          selected = legal.some((move) => move.startsWith(square)) ? square : null; renderBoard(); return;
+        }
+        if (legal.some((move) => move.startsWith(square))) { selected = square; renderBoard(); }
+      }
+
+      async function sendMove(uci) {
+        try { const response = await fetch("/api/move", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uci }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Move failed"); state = data; renderAll(); }
+        catch (error) { showToast(error.message, true); renderBoard(); }
+      }
+
+      async function startNewGame() {
+        const provider = $("providerSelect").value; const assist = Number($("assistRange").value); $("newGameButton").disabled = true;
+        try { const response = await fetch("/api/new-game", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ player_color: $("colorSelect").value, provider, assist_rate: assist }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Could not start game"); state = data; selected = null; renderAll(); }
+        catch (error) { showToast(error.message, true); } finally { $("newGameButton").disabled = false; }
+      }
+
+      async function undo() { try { const response = await fetch("/api/undo", { method: "POST" }); state = await response.json(); selected = null; renderAll(); } catch (error) { showToast(error.message, true); } }
+
+      function renderTelemetry() {
+        const telemetry = state?.telemetry; const panel = $("telemetryPanel"); const badge = $("providerBadge");
+        if (!telemetry) { badge.textContent = "waiting"; badge.className = "provider-badge"; panel.innerHTML = `<div class="empty">Play a move to inspect the model’s policy, value, and layer convergence.</div>`; renderLens(null); return; }
+        const selection = telemetry.selection || {}; const chosen = selection.chosen_provider || telemetry.provider; badge.textContent = chosen; badge.className = `provider-badge ${selection.stockfish_assist ? "assist" : ""}`;
+        const value = Number(telemetry.value || 0); const confidence = telemetry.layers?.at(-1)?.confidence || 0; const entropy = Number(telemetry.entropy || 0);
+        const warning = telemetry.warning ? `<div class="assist-note" style="color:var(--orange)">${escapeHtml(telemetry.warning)}</div>` : "";
+        const progress = (telemetry.layers || []).map((layer) => `<div class="lens-row"><span class="lens-label">${escapeHtml(layer.name)}</span><span class="lens-bar"><span class="lens-fill" style="width:${Math.max(4, Number(layer.confidence || 0) * 100)}%"></span></span><span class="lens-move">${escapeHtml(layer.san || "—")}</span></div>`).join("");
+        const played = telemetry.played ? `<p class="telemetry-copy" style="margin-bottom:15px"><strong>${escapeHtml(telemetry.played.provider)}</strong> played <strong>${escapeHtml(telemetry.played.san)}</strong>. ${selection.stockfish_assist ? `Assist rate is ${Math.round((selection.assist_rate || 0) * 100)}%.` : ""}</p>` : "";
+        panel.innerHTML = `${played}<div class="metric-grid"><div class="metric"><label>value</label><strong class="${value >= 0 ? "positive" : ""}">${value >= 0 ? "+" : ""}${value.toFixed(2)}</strong></div><div class="metric"><label>confidence</label><strong class="blue">${Math.round(confidence * 100)}%</strong></div><div class="metric"><label>entropy</label><strong>${entropy.toFixed(2)}</strong></div></div><div style="margin-top:18px"><div class="section-row"><h3>Convergence</h3><small>top legal move by depth</small></div><div class="lens-strip">${progress || `<div class="empty">Model checkpoint not loaded; using legal-move fallback.</div>`}</div></div>${warning}`;
+        renderLens(telemetry);
+      }
+
+      function renderLens(telemetry) {
+        const cards = $("lensCards"); const strip = $("lensStrip");
+        if (!telemetry || !telemetry.layers?.length) { cards.innerHTML = `<div class="empty">Play a move with a loaded checkpoint to populate the lens.</div>`; strip.innerHTML = `<div class="empty">No lens data yet.</div>`; $("lensPosition").textContent = "waiting for a position"; return; }
+        $("lensPosition").textContent = telemetry.played ? `after ${telemetry.played.san} · ${telemetry.played.provider}` : "current position";
+        cards.innerHTML = telemetry.layers.map((layer, index) => { const top = layer.top_moves || []; return `<article class="lens-card ${index === telemetry.layers.length - 1 ? "final" : ""}"><div class="lens-card-head"><span>${escapeHtml(layer.name)}</span><span class="lens-confidence">${Math.round(Number(layer.confidence || 0) * 100)}%</span></div><div class="lens-card-move">${escapeHtml(layer.san || "—")}</div><div>${top.map((move, rank) => `<div class="top-move"><span class="rank">0${rank + 1}</span><span class="bar"><i style="width:${Math.max(3, Number(move.probability || 0) * 100)}%"></i></span><span class="prob">${Math.round(Number(move.probability || 0) * 100)}%</span></div>`).join("")}</div></article>`; }).join("");
+        strip.innerHTML = telemetry.layers.map((layer) => `<div class="lens-row"><span class="lens-label">${escapeHtml(layer.name)}</span><span class="lens-bar"><span class="lens-fill" style="width:${Math.max(4, Number(layer.confidence || 0) * 100)}%"></span></span><span class="lens-move">${escapeHtml(layer.san || "—")}</span></div>`).join("");
+      }
+
+      function renderHistory() {
+        const history = state?.history || []; $("moveCount").textContent = `${history.length} ${history.length === 1 ? "ply" : "plies"}`;
+        $("moveList").innerHTML = history.length ? history.map((move) => `<div class="move-row"><span class="move-no">${String(move.ply).padStart(2, "0")}</span><span class="move-san">${escapeHtml(move.san)}</span><span class="move-actor">${escapeHtml(move.actor === "you" ? "You" : "Engine")}</span><span class="move-provider">${escapeHtml(move.provider)}</span></div>`).join("") : `<div class="empty">No moves yet.</div>`;
+      }
+
+      function renderAll() {
+        renderBoard(); renderTelemetry(); renderHistory();
+        $("turnText").textContent = state.turn.toUpperCase(); $("boardMessage").innerHTML = escapeHtml(state.message);
+        $("modePill").textContent = state.status.toUpperCase(); $("providerSelect").value = state.provider; $("colorSelect").value = state.player_color; $("assistRange").value = state.assist_rate; $("assistValue").textContent = `${Math.round(state.assist_rate * 100)}%`;
+        $("assistField").style.opacity = state.provider === "hybrid" ? "1" : ".42";
+        $("runtimeText").textContent = `${state.model_ready ? "checkpoint loaded" : "checkpoint missing"} · ${state.model_device}`; $("runtimeDot").classList.toggle("warn", !state.model_ready);
+      }
+
+      async function loadArchitecture() { try { const data = await (await fetch("/api/architecture")).json(); $("archParams").textContent = `${(data.parameters / 1000000).toFixed(2)}M`; $("archTokens").textContent = data.tokens; $("archWidth").textContent = data.d_model; $("archPolicyFact").textContent = Number(data.policy_outputs).toLocaleString(); $("archDevice").textContent = data.device; $("archCheckpoint").textContent = data.checkpoint_loaded ? "loaded" : "not found"; $("archLayers").textContent = data.layers; $("archHeads").textContent = data.heads; $("archPolicy").textContent = Number(data.policy_outputs).toLocaleString(); } catch (_) {} }
+
+      document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => { document.querySelectorAll(".tab-button").forEach((item) => item.classList.remove("active")); document.querySelectorAll(".tab-panel").forEach((item) => item.classList.remove("active")); button.classList.add("active"); $(`tab-${button.dataset.tab}`).classList.add("active"); if (button.dataset.tab === "architecture") loadArchitecture(); }));
+      $("newGameButton").addEventListener("click", startNewGame); $("undoButton").addEventListener("click", undo); $("assistRange").addEventListener("input", () => $("assistValue").textContent = `${Math.round(Number($("assistRange").value) * 100)}%`); $("providerSelect").addEventListener("change", () => $("assistField").style.opacity = $("providerSelect").value === "hybrid" ? "1" : ".42");
+
+      (async function init() { try { const response = await fetch("/api/state"); state = await response.json(); renderAll(); loadArchitecture(); } catch (error) { showToast("Could not connect to the Flask server.", true); } })();
     </script>
   </body>
 </html>

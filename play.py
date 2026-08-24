@@ -3,6 +3,7 @@ import torch
 import chess
 from src.model import ChessTransformer
 from src.evaluate import get_best_move
+from src.train import load_checkpoint_weights
 
 def play_against_ai():
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
@@ -11,8 +12,7 @@ def play_against_ai():
     # 1. Initialize and load model weights from checkpoint
     model = ChessTransformer().to(device)
     try:
-        checkpoint = torch.load("checkpoint.pt", map_location=device)
-        model.load_state_dict(checkpoint['model_state_dict'])
+        load_checkpoint_weights(model, "checkpoint.pt", device)
         print("Successfully loaded trained 'checkpoint.pt'!")
     except FileNotFoundError:
         print("Error: 'checkpoint.pt' not found. Please run training first!")

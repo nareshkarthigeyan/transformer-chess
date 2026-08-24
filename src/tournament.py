@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import shutil
 import time
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -14,7 +15,12 @@ NUM_GAMES = 20
 MAX_MOVES = 150
 RANDOM_BASE_ELO = 100
 STOCKFISH_DEPTH_1_BASE_ELO = 600
-STOCKFISH_PATH = "/opt/homebrew/bin/stockfish"
+STOCKFISH_PATH = (
+    os.environ.get("STOCKFISH_PATH")
+    or shutil.which("stockfish")
+    or shutil.which("stockfish.exe")
+    or "/opt/homebrew/bin/stockfish"
+)
 
 ShouldStopCallback = Callable[[], bool]
 MoveCallback = Callable[[chess.Board, chess.Move, str], None]

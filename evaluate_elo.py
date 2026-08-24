@@ -10,6 +10,7 @@ from src import (
     generate_game_mp4,
     generate_game_webm,
     open_stockfish,
+    load_checkpoint_weights,
     play_single_game,
     save_game_pgn,
     summarize_results,
@@ -129,8 +130,7 @@ if __name__ == "__main__":
     model = ChessTransformer().to(device)
 
     try:
-        checkpoint = torch.load("checkpoint.pt", map_location=device)
-        model.load_state_dict(checkpoint["model_state_dict"])
+        load_checkpoint_weights(model, "checkpoint.pt", device)
 
         random_results = run_tournament(model, device, opponent_type="random")
         sf_results = run_tournament(model, device, opponent_type="stockfish_depth_1")

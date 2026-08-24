@@ -1,6 +1,13 @@
-from .data_loader import board_to_sequence, move_to_id, ChessPGNDataset
+from .data_loader import (
+    DEFAULT_DATASET_PATH,
+    ChessNumpyDataset,
+    ChessPGNDataset,
+    board_to_sequence,
+    build_stockfish_distilled_dataset,
+    move_to_id,
+)
 from .model import ChessTransformer
-from .train import train_one_epoch, save_checkpoint
+from .train import load_checkpoint_weights, save_checkpoint, train_one_epoch
 from .evaluate import get_best_move
 from .exporter import (
     generate_game_gif,
@@ -24,10 +31,14 @@ from .tournament import (
 __all__ = [
     "board_to_sequence",
     "move_to_id",
+    "DEFAULT_DATASET_PATH",
+    "ChessNumpyDataset",
     "ChessPGNDataset",
+    "build_stockfish_distilled_dataset",
     "ChessTransformer",
     "train_one_epoch",
     "save_checkpoint",
+    "load_checkpoint_weights",
     "get_best_move",
     "save_game_pgn",
     "generate_game_gif",
