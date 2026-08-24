@@ -200,6 +200,101 @@
         footer { display: block; line-height: 1.7; }
       }
     </style>
+    <style>
+      /* Plain white demo skin. Keep the page functional and easy to read. */
+      :root { --ink:#111; --muted:#555; --dim:#666; --canvas:#fff; --panel:#fff; --panel-2:#f5f5f5; --line:#aaa; --lime:#111; --orange:#111; --cream:#fff; --brown:#ddd; --blue:#111; }
+      html, body { background:#fff !important; color:#111 !important; }
+      body { font-family:Arial, Helvetica, sans-serif; letter-spacing:normal; }
+      .app-shell { max-width:1200px; padding:0 20px 40px; }
+      .topbar { height:auto; min-height:58px; border-bottom:1px solid #aaa; gap:16px; }
+      .brand { gap:0; }
+      .brand-mark { display:none; }
+      .brand-name { font-size:18px; letter-spacing:normal; font-weight:700; }
+      .brand-sub { color:#555; font-size:11px; letter-spacing:normal; text-transform:none; margin-top:3px; }
+      .tabs { gap:0; height:auto; }
+      .tab-button { color:#222; background:#eee; border:1px solid #aaa; border-bottom:0; border-radius:0; padding:8px 12px; font-size:13px; letter-spacing:normal; text-transform:none; }
+      .tab-button + .tab-button { border-left:0; }
+      .tab-button.active { color:#111; background:#fff; font-weight:700; }
+      .tab-button.active::after { display:none; }
+      .runtime { color:#444; font-size:12px; }
+      .runtime-dot, .runtime-dot.warn { width:8px; height:8px; border-radius:50%; background:#111; box-shadow:none; }
+      .tab-panel { padding-top:28px; }
+      .eyebrow { color:#333; font:700 11px Arial, Helvetica, sans-serif; letter-spacing:normal; text-transform:none; }
+      h1 { font-size:32px; line-height:1.1; letter-spacing:normal; font-weight:700; }
+      h2 { font-size:24px; letter-spacing:normal; }
+      h3 { font-size:16px; letter-spacing:normal; }
+      .intro { align-items:start; margin-bottom:24px; }
+      .intro p { color:#333; line-height:1.5; font-size:14px; }
+      .panel { background:#fff; border:1px solid #aaa; border-radius:0; box-shadow:none; }
+      .panel-heading { padding:12px 14px; border-bottom:1px solid #aaa; }
+      .panel-heading small { color:#555; font:12px Arial, Helvetica, sans-serif; letter-spacing:normal; text-transform:none; }
+      .panel-body { padding:14px; }
+      .play-layout { grid-template-columns:minmax(400px,.95fr) minmax(360px,1.05fr); gap:16px; }
+      .board-panel { padding:16px; }
+      .board-topline { margin-bottom:12px; }
+      .turn-label { color:#555; font-size:13px; }
+      .turn-label strong { color:#111; }
+      .mode-pill, .status-pill, .provider-badge { padding:4px 7px; border:1px solid #999; border-radius:0; color:#222; font:12px Arial, Helvetica, sans-serif; text-transform:none; letter-spacing:normal; }
+      .mode-pill::before, .provider-badge::before { display:none; }
+      .chessboard { width:min(100%,600px); border-radius:0; box-shadow:none; border:2px solid #111; background:#111; }
+      .square.light { background:#fff; }
+      .square.dark { background:#ddd; }
+      .square.last-move { box-shadow:inset 0 0 0 999px rgba(0,0,0,.12); }
+      .square.selected { box-shadow:inset 0 0 0 3px #111; }
+      .square.target::after { width:22%; height:22%; border-radius:50%; background:rgba(0,0,0,.35); }
+      .square.target.capture::after { width:76%; height:76%; background:none; border:3px solid #111; }
+      .piece { transform:none; }
+      .piece.white { color:#fff; text-shadow:none; -webkit-text-stroke:1px #111; }
+      .piece.black { color:#111; text-shadow:none; }
+      .coord { color:#333 !important; font:10px Arial, Helvetica, sans-serif; opacity:1; }
+      .board-foot { margin-top:12px; }
+      .board-message { color:#333; font-size:13px; }
+      .button { border:1px solid #999; border-radius:0; background:#eee; color:#111; padding:8px 11px; font-size:13px; }
+      .button:hover { border-color:#111; }
+      .button.primary, .button.primary:hover { background:#ddd; color:#111; border-color:#777; font-weight:700; }
+      .stack { gap:14px; }
+      .field label { color:#333; font:12px Arial, Helvetica, sans-serif; letter-spacing:normal; text-transform:none; }
+      select { color:#111; background:#fff; border:1px solid #999; border-radius:0; padding:8px; }
+      select:focus { border-color:#111; }
+      input[type="range"] { accent-color:#111; }
+      .range-value { color:#111; font:700 13px Arial, Helvetica, sans-serif; }
+      .assist-note { color:#555; font-size:12px; }
+      .metric { background:#f5f5f5; border:1px solid #bbb; padding:10px; border-radius:0; }
+      .metric label { color:#444; font:11px Arial, Helvetica, sans-serif; text-transform:none; letter-spacing:normal; }
+      .metric strong, .metric strong.positive, .metric strong.blue { color:#111; font:700 18px Arial, Helvetica, sans-serif; }
+      .telemetry-copy { color:#333; font-size:13px; }
+      .move-row { border-bottom:1px solid #ddd; padding:8px 2px; font-size:13px; }
+      .move-no, .move-provider { color:#555; font:12px Arial, Helvetica, sans-serif; }
+      .move-san { color:#111; font-weight:700; }
+      .move-actor, .empty { color:#555; }
+      .lens-label { color:#333; font:12px Arial, Helvetica, sans-serif; }
+      .lens-bar { height:8px; border-radius:0; background:#eee; border:1px solid #bbb; }
+      .lens-fill { border-radius:0; background:#333; }
+      .lens-move { color:#111; font:700 13px Arial, Helvetica, sans-serif; }
+      .architecture-canvas { min-height:420px; padding:18px; }
+      .arch-node { min-height:64px; border:1px solid #aaa; background:#f5f5f5; border-radius:0; padding:12px 14px; }
+      .arch-node:not(:last-child)::after, .arch-icon { display:none; }
+      .arch-node.accent, .arch-node.orange { border-color:#888; background:#f5f5f5; }
+      .arch-detail { color:#333; font:12px Arial, Helvetica, sans-serif; }
+      .fact { border-bottom:1px solid #ddd; }
+      .fact span { color:#444; }
+      .fact strong { font:700 13px Arial, Helvetica, sans-serif; }
+      .arch-note { color:#333; background:#f5f5f5; border-left:3px solid #777; font-size:12px; }
+      .lens-card { background:#f5f5f5; border:1px solid #aaa; border-radius:0; }
+      .lens-card.final { border-color:#555; }
+      .lens-card-head, .top-move .rank, .top-move .prob { color:#333; font:12px Arial, Helvetica, sans-serif; text-transform:none; letter-spacing:normal; }
+      .lens-confidence { color:#111; }
+      .lens-card-move { font:700 26px Arial, Helvetica, sans-serif; letter-spacing:normal; }
+      .top-move .bar { height:6px; border-radius:0; background:#ddd; }
+      .top-move .bar i { border-radius:0; background:#333; }
+      .lens-side-copy { color:#333; font-size:13px; }
+      .legend { color:#333; font-size:12px; }
+      .legend i, .legend .green { border-radius:0; background:#333; }
+      .toast { right:20px; bottom:20px; border:1px solid #999; border-radius:0; background:#fff; color:#111; box-shadow:none; }
+      .toast.error { border-color:#900; color:#900; }
+      footer { color:#555; font:12px Arial, Helvetica, sans-serif; }
+      @media (max-width:720px) { .app-shell { padding:0 12px 30px; } .brand-name { font-size:16px; } }
+    </style>
   </head>
   <body>
     <div class="app-shell">
