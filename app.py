@@ -234,7 +234,7 @@ def _engine_turn():
         elif requested_provider == "hybrid":
             chosen_provider = "Transformer (Stockfish unavailable)"
 
-    if fallback_mode:
+    if fallback_mode and model_analysis is None:
         model_analysis = _fallback_analysis(board)
         if stockfish_info:
             model_analysis["selected_uci"] = stockfish_info["uci"]
