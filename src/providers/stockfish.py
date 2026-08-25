@@ -47,16 +47,17 @@ class StockfishProvider:
             self.engine = chess.engine.SimpleEngine.popen_uci(self.path)
         return self
 
-    def choose(self, board: chess.Board) -> dict:
+    def choose(self, board: chess.Board, depth: Optional[int] = None) -> dict:
         self.start()
-        result = self.engine.play(board, chess.engine.Limit(depth=self.depth))
+        search_depth = depth if depth is not None else self.depth
+        result = self.engine.play(board, chess.engine.Limit(depth=search_depth))
         move = result.move
         return {
             "move": move,
             "uci": move.uci(),
             "san": board.san(move),
             "provider": "Stockfish",
-            "depth": self.depth,
+            "depth": search_depth,
         }
 
     def close(self):
