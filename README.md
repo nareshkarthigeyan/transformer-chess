@@ -16,7 +16,7 @@ Turn on a **GPU** runtime first. Then paste this single notebook cell—there is
 no `%cd`, manual package installation, Stockfish setup, or data download step:
 
 ```bash
-!test -d transformer-chess/.git || git clone https://github.com/nareshkarthigeyan/transformer-chess.git; bash transformer-chess/scripts/cloud_train.sh
+!if [ -d transformer-chess/.git ]; then git -C transformer-chess pull --ff-only; else git clone https://github.com/nareshkarthigeyan/transformer-chess.git; fi; bash transformer-chess/scripts/cloud_train.sh
 ```
 
 The script installs Python packages and Stockfish, downloads a diverse bounded
