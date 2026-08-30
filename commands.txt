@@ -1,12 +1,10 @@
 LET'S THINK CHESS — RUNBOOK
 ===========================
 
-COLAB / KAGGLE GPU (one command after cloning)
------------------------------------------------
+COLAB / KAGGLE GPU (paste one cell; no cd needed)
+--------------------------------------------------
 
-!git clone https://github.com/nareshkarthigeyan/transformer-chess.git
-%cd transformer-chess
-!bash scripts/cloud_train.sh
+!test -d transformer-chess/.git || git clone https://github.com/nareshkarthigeyan/transformer-chess.git; bash transformer-chess/scripts/cloud_train.sh
 
 The launcher installs Stockfish and Python packages. If data/*.pgn is absent,
 it downloads a bounded public Lichess PGN corpus. It writes best.pt, last.pt,

@@ -12,18 +12,18 @@ rating.
 
 ## One-command cloud run
 
-Turn on a **GPU** runtime first. Then use one notebook cell after cloning:
+Turn on a **GPU** runtime first. Then paste this single notebook cell—there is
+no `%cd`, manual package installation, Stockfish setup, or data download step:
 
 ```bash
-!git clone https://github.com/nareshkarthigeyan/transformer-chess.git
-%cd transformer-chess
-!bash scripts/cloud_train.sh
+!test -d transformer-chess/.git || git clone https://github.com/nareshkarthigeyan/transformer-chess.git; bash transformer-chess/scripts/cloud_train.sh
 ```
 
 The script installs Python packages and Stockfish, downloads a bounded public
-PGN corpus only when `data/*.pgn` is absent, builds/resumes the teacher cache,
-trains the `presentation` preset, and writes every artifact below. It needs no
-manual Stockfish download or path setup.
+PGN corpus only when `data/*.pgn` is absent, changes into its own repository
+directory, builds/resumes the teacher cache, trains the `presentation` preset,
+and writes every artifact below. It needs no manual Stockfish download or path
+setup.
 
 To use the project PGNs you already have, place them in `data/` before the last
 command. To retain checkpoints across a Colab reset, mount Drive and point the
