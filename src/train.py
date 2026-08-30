@@ -6,8 +6,10 @@ from contextlib import nullcontext
 from typing import Callable, Optional
 
 import chess
+import numpy as np
 import torch
 import torch.nn.functional as F
+from torch.utils.data import DataLoader, Subset
 
 
 def _apply_legal_move_id_mask(logits: torch.Tensor, legal_move_ids: torch.Tensor) -> torch.Tensor:
@@ -57,16 +59,16 @@ def _mask_from_fens(logits: torch.Tensor, fens) -> torch.Tensor:
     return _apply_legal_move_id_mask(logits, legal_ids)
 
 
-def _teacher_policy_loss(
+def _teacher_policy_loss_per_example(
     logits: torch.Tensor,
     teacher_top_move_ids: Optional[torch.Tensor],
     teacher_top_probs: Optional[torch.Tensor],
 ) -> torch.Tensor:
     if teacher_top_move_ids is None or teacher_top_probs is None:
-        return torch.zeros((), device=logits.device)
+        return torch.zeros(logits.size(0), device=logits.device)
     valid = teacher_top_move_ids >= 0
     if not valid.any():
-        return torch.zeros((), device=logits.device)
+        return torch.zeros(logits.size(0), device=logits.device)
     probabilities = teacher_top_probs * valid.to(teacher_top_probs.dtype)
     probabilities = probabilities / probabilities.sum(dim=1, keepdim=True).clamp_min(1e-8)
     selected_log_probs = F.log_softmax(logits, dim=1).gather(
@@ -75,7 +77,17 @@ def _teacher_policy_loss(
     # Invalid padded slots can point at an illegal bucket (log p = -inf).
     # Replace them before multiplication: 0 * -inf is NaN in IEEE arithmetic.
     selected_log_probs = torch.where(valid, selected_log_probs, torch.zeros_like(selected_log_probs))
-    return -(probabilities * selected_log_probs).sum(dim=1).mean()
+    return -(probabilities * selected_log_probs).sum(dim=1)
+
+
+def _teacher_policy_loss(
+    logits: torch.Tensor,
+    teacher_top_move_ids: Optional[torch.Tensor],
+    teacher_top_probs: Optional[torch.Tensor],
+) -> torch.Tensor:
+    return _teacher_policy_loss_per_example(
+        logits, teacher_top_move_ids, teacher_top_probs
+    ).mean()
 
 
 def _autocast_context(device: torch.device, enabled: bool):
@@ -160,6 +172,60 @@ def run_epoch(
     return {key: value / examples for key, value in metric_totals.items()}
 
 
+@torch.no_grad()
+def collect_hard_example_weights(
+    model,
+    dataset,
+    indices,
+    device: torch.device,
+    batch_size: int = 256,
+    num_workers: int = 0,
+    value_loss_weight: float = 0.25,
+    teacher_policy_weight: float = 0.35,
+    amp: bool = False,
+):
+    """Score training rows by current error for the next curriculum round.
+
+    The returned array is aligned with ``indices`` and has mean one. A later
+    round can multiply it by the tactical/endgame prior, so difficult examples
+    are revisited without discarding ordinary positions.
+    """
+    if len(indices) == 0:
+        return np.zeros(0, dtype=np.float32)
+    loader = DataLoader(
+        Subset(dataset, list(indices)), batch_size=batch_size, shuffle=False,
+        num_workers=max(0, num_workers), pin_memory=device.type == "cuda",
+        persistent_workers=num_workers > 0,
+    )
+    was_training = model.training
+    model.eval()
+    losses = []
+    for batch in loader:
+        boards, states, targets, values, legal_move_ids, teacher_ids, teacher_probs, fens = _unpack_batch(batch)
+        boards = boards.to(device, non_blocking=True)
+        targets = targets.to(device, non_blocking=True)
+        states = states.to(device, non_blocking=True) if states is not None else None
+        values = values.to(device, non_blocking=True) if values is not None else None
+        legal_move_ids = legal_move_ids.to(device, non_blocking=True) if legal_move_ids is not None else None
+        teacher_ids = teacher_ids.to(device, non_blocking=True) if teacher_ids is not None else None
+        teacher_probs = teacher_probs.to(device, non_blocking=True) if teacher_probs is not None else None
+        with _autocast_context(device, amp):
+            logits, predicted_values = model(boards, state_features=states, return_value=True)
+            if legal_move_ids is not None:
+                logits = _apply_legal_move_id_mask(logits, legal_move_ids)
+            elif fens is not None:
+                logits = _mask_from_fens(logits, fens)
+            hard = F.cross_entropy(logits, targets, reduction="none")
+            soft = _teacher_policy_loss_per_example(logits, teacher_ids, teacher_probs)
+            value = ((predicted_values - values) ** 2) if values is not None else torch.zeros_like(hard)
+            losses.append(((1 - teacher_policy_weight) * hard + teacher_policy_weight * soft + value_loss_weight * value).float().cpu())
+    if was_training:
+        model.train()
+    scores = torch.cat(losses).numpy().astype(np.float32, copy=False)
+    mean = float(scores.mean()) if scores.size else 1.0
+    return (1.0 + scores / max(mean, 1e-6)).astype(np.float32, copy=False)
+
+
 def train_one_epoch(
     model,
     dataloader,
@@ -192,6 +258,7 @@ def save_checkpoint(
     metrics: Optional[dict] = None,
     global_step: int = 0,
     run_config: Optional[dict] = None,
+    curriculum_state: Optional[dict] = None,
 ):
     """Save a full, resumable checkpoint including model configuration."""
     state = {
@@ -206,6 +273,7 @@ def save_checkpoint(
         "loss": loss,
         "metrics": metrics or {},
         "run_config": run_config or {},
+        "curriculum_state": curriculum_state or {},
     }
     temporary = f"{filename}.tmp"
     torch.save(state, temporary)

@@ -14,7 +14,7 @@ epoch snapshots, training.log.txt, JSONL metrics, and a JSON summary.
 PERSIST COLAB OUTPUTS ON DRIVE
 ------------------------------
 
-!bash scripts/cloud_train.sh \
+!bash transformer-chess/scripts/cloud_train.sh \
   --data-dir /content/drive/MyDrive/chess_pgns \
   --checkpoint-dir /content/drive/MyDrive/let_think_chess/checkpoints \
   --log-path /content/drive/MyDrive/let_think_chess/logs/training.log.txt \
@@ -24,7 +24,7 @@ PERSIST COLAB OUTPUTS ON DRIVE
 RESUME AFTER A DISCONNECT
 -------------------------
 
-python run_train.py --preset presentation --resume auto
+python run_train.py --preset strong --resume auto
 
 
 LOCAL INSTALL + TRAIN
@@ -41,7 +41,7 @@ brew install stockfish
 # Ubuntu/Debian
 sudo apt-get update && sudo apt-get install -y stockfish
 
-python run_train.py --preset presentation
+python run_train.py --preset strong
 
 
 EVALUATE AND PLAY IN THE WEB UI

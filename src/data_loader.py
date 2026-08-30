@@ -29,7 +29,7 @@ PIECE_TO_TOKEN = {
 
 MAX_LEGAL_MOVES = 256
 DEFAULT_DATASET_PATH = os.path.join("data", "stockfish_distilled_dataset.npz")
-DATASET_VERSION = 2
+DATASET_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -135,6 +135,32 @@ def _score_to_value(score: chess.engine.PovScore, board: chess.Board, scale: int
     return float(np.tanh(_score_to_centipawns(score, board, scale) / scale))
 
 
+def _position_priority(board: chess.Board, human_move: chess.Move, teacher_move: chess.Move, value: float):
+    """Return flags and a sampling weight for the curriculum sampler.
+
+    Tactical rows are those with captures, checks, or promotions. Endgame rows
+    have low material or no queens. The value-confidence term surfaces sharp
+    positions while retaining every ordinary position in the base distribution.
+    """
+    tactical = int(
+        board.is_capture(human_move)
+        or board.is_capture(teacher_move)
+        or human_move.promotion is not None
+        or teacher_move.promotion is not None
+        or board.gives_check(human_move)
+        or board.gives_check(teacher_move)
+    )
+    pieces = list(board.piece_map().values())
+    endgame = int(
+        len(pieces) <= 12
+        or not any(piece.piece_type == chess.QUEEN for piece in pieces)
+    )
+    opening = int(board.fullmove_number <= 10)
+    flags = np.asarray([tactical, endgame, opening], dtype=np.uint8)
+    weight = 1.0 + 2.0 * tactical + 1.5 * endgame + 0.5 * min(1.0, abs(value))
+    return flags, np.float32(weight)
+
+
 def _legal_move_ids(board: chess.Board) -> np.ndarray:
     ids = np.full(MAX_LEGAL_MOVES, -1, dtype=np.int16)
     for index, move in enumerate(board.legal_moves):
@@ -194,8 +220,12 @@ def _save_dataset(path: str, rows: dict, metadata: dict) -> None:
         legal_move_ids=np.asarray(rows["legal_move_ids"], dtype=np.int16),
         teacher_top_move_ids=np.asarray(rows["teacher_top_move_ids"], dtype=np.int16),
         teacher_top_probs=np.asarray(rows["teacher_top_probs"], dtype=np.float32),
+        priority_flags=np.asarray(rows["priority_flags"], dtype=np.uint8),
+        sampling_weights=np.asarray(rows["sampling_weights"], dtype=np.float32),
         fens=np.asarray(rows["fens"], dtype=np.str_),
         source_files=np.asarray(rows["source_files"], dtype=np.str_),
+        game_ids=np.asarray(rows["game_ids"], dtype=np.str_),
+        eco_codes=np.asarray(rows["eco_codes"], dtype=np.str_),
         metadata=np.asarray(json.dumps(metadata, sort_keys=True), dtype=np.str_),
     )
     os.replace(temporary_path, path)
@@ -207,6 +237,7 @@ def _load_partial(path: str) -> tuple[dict, dict]:
     required = [
         "boards", "state_features", "human_move_ids", "teacher_move_ids", "values",
         "legal_move_ids", "teacher_top_move_ids", "teacher_top_probs", "fens", "source_files",
+        "priority_flags", "sampling_weights", "game_ids", "eco_codes",
     ]
     if any(key not in loaded for key in required):
         raise ValueError("Partial dataset was created by an incompatible pipeline version.")
@@ -263,11 +294,23 @@ def build_stockfish_distilled_dataset(
     rows = {
         "boards": [], "state_features": [], "human_move_ids": [], "teacher_move_ids": [],
         "values": [], "legal_move_ids": [], "teacher_top_move_ids": [],
-        "teacher_top_probs": [], "fens": [], "source_files": [],
+        "teacher_top_probs": [], "priority_flags": [], "sampling_weights": [],
+        "fens": [], "source_files": [], "game_ids": [], "eco_codes": [],
     }
     skipped_selected_positions = 0
     if resume and os.path.isfile(partial_path):
-        rows, partial_metadata = _load_partial(partial_path)
+        try:
+            rows, partial_metadata = _load_partial(partial_path)
+        except ValueError:
+            print("Ignoring an incompatible partial cache and starting a fresh label run.")
+            os.remove(partial_path)
+            rows = {
+                "boards": [], "state_features": [], "human_move_ids": [], "teacher_move_ids": [],
+                "values": [], "legal_move_ids": [], "teacher_top_move_ids": [],
+                "teacher_top_probs": [], "priority_flags": [], "sampling_weights": [],
+                "fens": [], "source_files": [], "game_ids": [], "eco_codes": [],
+            }
+            partial_metadata = {"dataset_version": DATASET_VERSION}
         if partial_metadata.get("dataset_version") != DATASET_VERSION:
             raise ValueError("Partial dataset version mismatch; delete it or use --no-resume.")
         skipped_selected_positions = len(rows["boards"])
@@ -347,6 +390,13 @@ def build_stockfish_distilled_dataset(
                                         rows["teacher_top_probs"].append(padded_probs)
                                         rows["fens"].append(board.fen())
                                         rows["source_files"].append(file_name)
+                                        rows["game_ids"].append(f"{file_name}:{game_count}")
+                                        rows["eco_codes"].append(game.headers.get("ECO", "UNK"))
+                                        flags, weight = _position_priority(
+                                            board, human_move, teacher_move, value
+                                        )
+                                        rows["priority_flags"].append(flags)
+                                        rows["sampling_weights"].append(weight)
                                         selected_seen += 1
                                         count_rows = len(rows["boards"])
                                         if count_rows % progress_interval == 0:
@@ -374,6 +424,9 @@ def build_stockfish_distilled_dataset(
     if not rows["boards"]:
         raise RuntimeError("No valid positions were labelled from the supplied PGNs.")
     metadata["status"] = "complete"
+    metadata["total_games"] = int(len(set(rows["game_ids"])))
+    metadata["tactical_positions"] = int(sum(int(flags[0]) for flags in rows["priority_flags"]))
+    metadata["endgame_positions"] = int(sum(int(flags[1]) for flags in rows["priority_flags"]))
     _save_dataset(output_path, rows, metadata)
     if os.path.exists(partial_path):
         os.remove(partial_path)
@@ -389,10 +442,27 @@ class ChessNumpyDataset(Dataset):
         self.data = np.load(dataset_path, allow_pickle=False)
         self.X = self.data["boards"]
         self.policy_targets = self.data["teacher_move_ids"]
+        self.teacher_move_ids = self.policy_targets
         self.values = self.data["values"]
         self.legal_move_ids = self.data["legal_move_ids"]
+        self.human_move_ids = self.data.get("human_move_ids")
+        if self.human_move_ids is None:
+            # Caches made before the curriculum schema had no human target array.
+            self.human_move_ids = self.policy_targets
         self.teacher_top_move_ids = self.data.get("teacher_top_move_ids")
         self.teacher_top_probs = self.data.get("teacher_top_probs")
+        self.priority_flags = self.data.get("priority_flags")
+        self.sampling_weights = self.data.get("sampling_weights")
+        if self.sampling_weights is None:
+            self.sampling_weights = np.ones(len(self.X), dtype=np.float32)
+        self.game_ids = self.data.get("game_ids")
+        if self.game_ids is None:
+            source_files = self.data.get("source_files")
+            self.game_ids = np.asarray(source_files if source_files is not None else [str(i) for i in range(len(self.X))], dtype=np.str_)
+        self.eco_codes = self.data.get("eco_codes")
+        if self.eco_codes is None:
+            self.eco_codes = np.full(len(self.X), "UNK", dtype=np.str_)
+        self.target_mode = "teacher"
         if "state_features" in self.data:
             self.state_features = self.data["state_features"]
         elif "fens" in self.data:
@@ -420,10 +490,11 @@ class ChessNumpyDataset(Dataset):
         else:
             top_ids = torch.as_tensor(self.teacher_top_move_ids[idx], dtype=torch.long)
             top_probs = torch.as_tensor(self.teacher_top_probs[idx], dtype=torch.float32)
+        target = self.teacher_move_ids[idx] if self.target_mode == "teacher" else self.human_move_ids[idx]
         return (
             torch.as_tensor(self.X[idx], dtype=torch.long),
             torch.as_tensor(self.state_features[idx], dtype=torch.long),
-            torch.as_tensor(self.policy_targets[idx], dtype=torch.long),
+            torch.as_tensor(target, dtype=torch.long),
             torch.as_tensor(self.values[idx], dtype=torch.float32),
             torch.as_tensor(self.legal_move_ids[idx], dtype=torch.long),
             top_ids,

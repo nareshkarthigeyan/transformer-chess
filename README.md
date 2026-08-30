@@ -19,18 +19,18 @@ no `%cd`, manual package installation, Stockfish setup, or data download step:
 !test -d transformer-chess/.git || git clone https://github.com/nareshkarthigeyan/transformer-chess.git; bash transformer-chess/scripts/cloud_train.sh
 ```
 
-The script installs Python packages and Stockfish, downloads a bounded public
-PGN corpus only when `data/*.pgn` is absent, changes into its own repository
-directory, builds/resumes the teacher cache, trains the `presentation` preset,
-and writes every artifact below. It needs no manual Stockfish download or path
-setup.
+The script installs Python packages and Stockfish, downloads a diverse bounded
+public PGN corpus (five public players × 1,000 games by default) only when
+`data/*.pgn` is absent, changes into its own repository directory, builds or
+resumes the teacher cache, and trains the `strong` curriculum preset. It needs
+no manual Stockfish download or path setup.
 
 To use the project PGNs you already have, place them in `data/` before the last
 command. To retain checkpoints across a Colab reset, mount Drive and point the
 checkpoint/log outputs at it:
 
 ```bash
-!bash scripts/cloud_train.sh \
+!bash transformer-chess/scripts/cloud_train.sh \
   --data-dir /content/drive/MyDrive/chess_pgns \
   --checkpoint-dir /content/drive/MyDrive/let_think_chess/checkpoints \
   --log-path /content/drive/MyDrive/let_think_chess/logs/training.log.txt \
@@ -53,11 +53,15 @@ PGN games
   → plain-text log + JSONL metrics + JSON summary
 ```
 
-The `presentation` preset limits itself to 30,000 positions, uses a 30 ms
-Stockfish teacher budget with MultiPV=4, and trains a 4-layer, width-128 model
-for 24 epochs. It is a bounded same-day job; actual time depends mostly on the
-cloud GPU and Stockfish labelling speed. Use `--preset smoke` to verify a new
-runtime, or `--preset research` for a much slower depth-15 job.
+The default `strong` preset labels up to 200,000 positions with an 80 ms
+Stockfish teacher budget and MultiPV=4, then runs a resumable curriculum:
+human-move warm-up, Stockfish distillation, opening-aware plus tactical/endgame
+oversampling, and hard-example fine-tuning repeated for two rounds. The cache records game IDs so
+validation is split by complete games rather than random positions. This is a
+bounded same-day job on a free cloud GPU; actual time depends mostly on
+Stockfish labelling speed. Use `--preset smoke` to verify a new runtime,
+`--preset presentation` for a smaller curriculum, or `--preset research` for a
+much slower depth-15 job.
 
 ## Outputs and recovery
 
@@ -73,10 +77,11 @@ runtime, or `--preset research` for a much slower depth-15 job.
 | `reports/training_summary.json` | Compact final training summary |
 
 If a Colab session disconnects, rerun exactly the same command. Dataset
-labelling continues from the partial cache and training continues with:
+labelling continues from the partial cache and training continues from the
+last completed curriculum epoch with:
 
 ```bash
-python run_train.py --preset presentation --resume auto
+python run_train.py --preset strong --resume auto
 ```
 
 ## Local training and evaluation
@@ -144,10 +149,10 @@ that it does.
 python run_train.py --preset smoke --max-positions 1000
 
 # Rebuild labels after changing PGNs or teacher settings
-python run_train.py --preset presentation --rebuild-dataset
+python run_train.py --preset strong --rebuild-dataset
 
-# Use a public Lichess account explicitly
-python scripts/download_lichess_games.py --user DrNykterstein --max-games 800
+# Download the default five-player corpus explicitly
+python scripts/download_lichess_games.py --games-per-user 1000 --output-dir data
 
 # Inspect one model checkpoint through the UI
 CHECKPOINT_PATH=checkpoints/best.pt bash scripts/run_web.sh

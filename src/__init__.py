@@ -9,7 +9,7 @@ from .data_loader import (
     move_to_id,
 )
 from .model import ChessTransformer
-from .train import load_checkpoint_weights, save_checkpoint, train_one_epoch
+from .train import collect_hard_example_weights, load_checkpoint_weights, save_checkpoint, train_one_epoch
 from .evaluate import get_best_move
 from .exporter import (
     generate_game_gif,
@@ -43,6 +43,7 @@ __all__ = [
     "train_one_epoch",
     "save_checkpoint",
     "load_checkpoint_weights",
+    "collect_hard_example_weights",
     "get_best_move",
     "save_game_pgn",
     "generate_game_gif",
