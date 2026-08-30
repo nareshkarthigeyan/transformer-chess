@@ -2,6 +2,14 @@
 
 ## Interactive presentation polish
 
+- White and black pieces now use explicit contrasting fills and shadows instead
+  of inheriting the same glyph color.
+- Provider and opening-side controls are presented as pre-game setup; the
+  active provider is shown in the readout while playing, with settings
+  available on demand for the next game.
+- Added a mid-game switch-side control that preserves the board and lets the
+  engine make the intervening move when needed.
+- Added a compact in-game Logic Lens alongside the full Lens tab.
 - Added a dark, color-coded browser layout with clearer board coordinates,
   selected/last-move/check highlights, and responsive panels.
 - Interactive games now continue through claimable threefold/50-move draws;

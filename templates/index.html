@@ -36,6 +36,8 @@
       .square.target::after { content: ""; position: absolute; width: 18%; height: 18%; background: #12233899; border: 2px solid #fff9; border-radius: 50%; }
       .square.target.capture::after { width: 78%; height: 78%; background: transparent; border: 5px solid #e55d6fcc; }
       .piece { font-family: "Times New Roman", serif; user-select: none; filter: drop-shadow(0 2px 1px #0006); }
+      .piece.white-piece { color: #ffffff; text-shadow: 0 1px 0 #73869c, 0 3px 4px #15243caa; }
+      .piece.black-piece { color: #101827; text-shadow: 0 1px 0 #d6e4f2aa, 0 3px 4px #07101ccc; }
       .coord { position: absolute; color: #17314b; font-size: 10px; font-weight: 800; pointer-events: none; }
       .dark .coord { color: #e5f1fb; }
       .coord.file { right: 5px; bottom: 3px; }
@@ -45,6 +47,10 @@
       .status-banner.finished { color: #fff; background: linear-gradient(120deg, #a73e68, #60429c); border-color: #da83a3; }
       .status-icon { font-size: 20px; }
       .board-foot { color: var(--muted); font-size: 13px; }
+      .board-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+      .switch-color { color: #06151a; background: var(--accent-2); border-color: var(--accent-2); }
+      .settings-button { width: 100%; margin-bottom: 10px; }
+      .setup-hint { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.4; }
       .panel, fieldset { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: #0f182aee; box-shadow: 0 10px 30px #0002; }
       .panel + .panel { margin-top: 12px; }
       fieldset { margin: 0 0 12px; }
@@ -80,6 +86,12 @@
       .arch-flow { display: grid; gap: 8px; }
       .arch-node { border: 1px solid var(--line); border-radius: 9px; padding: 12px; background: #142239; display: flex; justify-content: space-between; gap: 12px; }
       .arch-detail { color: var(--muted); text-align: right; }
+      .mini-lens { display: grid; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+      .mini-lens-title { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+      .mini-lens-row { display: grid; grid-template-columns: minmax(95px, 1fr) 40px 38px; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+      .mini-lens-row strong { color: var(--accent); font-size: 13px; }
+      .mini-lens-bar { grid-column: 1 / -1; height: 5px; overflow: hidden; margin-top: -4px; background: #0a1120; border-radius: 999px; }
+      .mini-lens-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); border-radius: inherit; }
       .chart-shell { position: relative; min-height: 210px; padding: 8px 4px 0; }
       #eloChart { display: block; width: 100%; height: 190px; }
       .chart-meta { color: var(--muted); font-size: 12px; }
@@ -112,13 +124,15 @@
             <div id="statusBanner" class="status-banner" role="status"><span id="statusIcon" class="status-icon">♟</span><span id="statusText">Your move. Click a piece, then its destination.</span></div>
             <div class="board-foot">
               <span id="boardMessage">Your move. Click a piece, then its destination.</span>
-              <span><button id="claimDrawButton" hidden>Claim draw</button> <button id="undoButton">Undo</button> <button id="newGameButton">New game</button></span>
+              <span class="board-actions"><button id="switchColorButton" class="switch-color" hidden>Switch to Black</button> <button id="claimDrawButton" hidden>Claim draw</button> <button id="undoButton">Undo</button> <button id="newGameButton">New game</button></span>
             </div>
           </div>
 
           <div>
-            <fieldset>
-              <legend>Game</legend>
+            <button id="settingsButton" class="settings-button" hidden>Game settings</button>
+            <fieldset id="setupPanel">
+              <legend>New game setup</legend>
+              <p class="setup-hint" id="setupHint">Choose your side and engine before starting. The provider stays fixed during a game.</p>
               <div class="control-grid">
                 <div class="field">
                   <label for="colorSelect">You play</label>
@@ -139,6 +153,7 @@
               <legend>Readout</legend>
               <p>Provider: <strong id="providerBadge">waiting</strong></p>
               <div id="telemetryPanel"><div class="empty">Play a move to inspect the model.</div></div>
+              <div id="miniLens" class="mini-lens"><div class="empty">Mini Logic Lens appears after an engine move.</div></div>
             </fieldset>
 
             <fieldset>
@@ -228,8 +243,9 @@
           const piece = board[square]; const isTarget = selected && legal.some((move) => move.startsWith(selected) && move.slice(2,4) === square); const isCapture = isTarget && !!piece; const isLast = lastSquares.includes(square);
           const isCheckedKing = Boolean(state.in_check && piece && piece.toLowerCase() === "k" && ((state.turn === "white" && piece === "K") || (state.turn === "black" && piece === "k")));
           const shade = (Math.floor(index / 8) + index % 8) % 2 === 0 ? "light" : "dark";
+          const pieceTone = piece ? (piece === piece.toUpperCase() ? "white-piece" : "black-piece") : "";
           const fileLabel = index >= 56 ? square[0] : ""; const rankLabel = index % 8 === 0 ? square[1] : "";
-          return `<button class="square ${shade} ${selected === square ? "selected" : ""} ${isTarget ? `target ${isCapture ? "capture" : ""}` : ""} ${isLast ? "last-move" : ""} ${isCheckedKing ? "in-check" : ""}" data-square="${square}" aria-label="${square}">${piece ? `<span class="piece">${glyphs[piece]}</span>` : ""}<span class="coord file">${fileLabel}</span><span class="coord rank">${rankLabel}</span></button>`;
+          return `<button class="square ${shade} ${selected === square ? "selected" : ""} ${isTarget ? `target ${isCapture ? "capture" : ""}` : ""} ${isLast ? "last-move" : ""} ${isCheckedKing ? "in-check" : ""}" data-square="${square}" aria-label="${square}">${piece ? `<span class="piece ${pieceTone}">${glyphs[piece]}</span>` : ""}<span class="coord file">${fileLabel}</span><span class="coord rank">${rankLabel}</span></button>`;
         }).join("");
         $("board").querySelectorAll(".square").forEach((square) => square.addEventListener("click", () => clickSquare(square.dataset.square)));
       }
@@ -258,6 +274,17 @@
 
       async function undo() { try { const response = await fetch("/api/undo", { method: "POST" }); state = await response.json(); selected = null; renderAll(); } catch (error) { showToast(error.message, true); } }
 
+      async function switchColor() {
+        const button = $("switchColorButton"); button.disabled = true;
+        try { const response = await fetch("/api/switch-color", { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Could not switch sides"); state = data; selected = null; renderAll(); showToast(`You now play ${state.player_color}.`); }
+        catch (error) { showToast(error.message, true); }
+        finally { button.disabled = false; }
+      }
+
+      function showSetup() {
+        $("setupPanel").hidden = false; $("settingsButton").hidden = true; $("setupHint").textContent = "Choose settings for the next game, then press New game.";
+      }
+
       async function claimDraw() {
         try { const response = await fetch("/api/claim-draw", { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "A draw cannot be claimed here"); state = data; selected = null; renderAll(); showToast("Draw claimed."); }
         catch (error) { showToast(error.message, true); }
@@ -265,7 +292,7 @@
 
       function renderTelemetry() {
         const telemetry = state?.telemetry; const panel = $("telemetryPanel"); const badge = $("providerBadge");
-        if (!telemetry) { badge.textContent = "waiting"; panel.innerHTML = `<div class="empty">Play a move to inspect the model.</div>`; renderLens(null); return; }
+        if (!telemetry) { badge.textContent = "waiting"; panel.innerHTML = `<div class="empty">Play a move to inspect the model.</div>`; renderLens(null); renderMiniLens(null); return; }
         const selection = telemetry.selection || {}; badge.textContent = selection.chosen_provider || telemetry.provider;
         const value = Number(telemetry.value || 0); const confidence = telemetry.layers?.at(-1)?.confidence || 0; const entropy = Number(telemetry.entropy || 0);
         const progress = (telemetry.layers || []).map((layer) => `<div class="lens-row"><span>${escapeHtml(layer.name)}</span><span class="lens-bar"><span class="lens-fill" style="width:${Math.max(4, Number(layer.confidence || 0) * 100)}%"></span></span><span>${escapeHtml(layer.san || "—")}</span></div>`).join("");
@@ -273,7 +300,14 @@
         const review = telemetry.stockfish_review;
         const reviewHtml = review?.available ? `<div class="panel"><strong>Live Stockfish move review</strong><div class="fact"><span>Quality</span><strong>${escapeHtml(review.quality)}</strong></div><div class="fact"><span>Centipawn loss</span><strong>${escapeHtml(review.centipawn_loss)}</strong></div><div class="fact"><span>Best move</span><strong>${escapeHtml(review.best_san || "—")}</strong></div><div class="fact"><span>Quality band</span><strong>${escapeHtml(review.heuristic_band)}</strong></div><small>${escapeHtml(review.note)}</small></div>` : (review?.warning ? `<div class="empty">Stockfish review unavailable: ${escapeHtml(review.warning)}</div>` : "");
         panel.innerHTML = `${played}<div class="metric-grid"><div class="metric"><label>Value</label><strong>${value >= 0 ? "+" : ""}${value.toFixed(2)}</strong></div><div class="metric"><label>Confidence</label><strong>${Math.round(confidence * 100)}%</strong></div><div class="metric"><label>Entropy</label><strong>${entropy.toFixed(2)}</strong></div></div>${reviewHtml}<p>Layer moves</p><div class="lens-strip">${progress || `<div class="empty">No checkpoint loaded.</div>`}</div>`;
-        renderLens(telemetry);
+        renderLens(telemetry); renderMiniLens(telemetry);
+      }
+
+      function renderMiniLens(telemetry) {
+        const mini = $("miniLens");
+        if (!telemetry || !telemetry.layers?.length) { mini.innerHTML = `<div class="mini-lens-title"><span>Mini Logic Lens</span><span>waiting</span></div><div class="empty">Appears after an engine move.</div>`; return; }
+        const layers = telemetry.layers.slice(0, 5);
+        mini.innerHTML = `<div class="mini-lens-title"><span>Mini Logic Lens</span><span>${escapeHtml(telemetry.played?.san || "current position")}</span></div>${layers.map((layer) => { const confidence = Math.max(0, Math.min(1, Number(layer.confidence || 0))); return `<div class="mini-lens-row"><span>${escapeHtml(layer.name)}</span><strong>${escapeHtml(layer.san || "—")}</strong><span>${Math.round(confidence * 100)}%</span><span class="mini-lens-bar"><i style="width:${Math.max(3, confidence * 100)}%"></i></span></div>`; }).join("")}`;
       }
 
       function renderLens(telemetry) {
@@ -304,6 +338,8 @@
         }
         $("claimDrawButton").hidden = !state.claimable_draw || state.status === "finished";
         $("undoButton").disabled = !(state.history?.length);
+        $("switchColorButton").hidden = state.status === "finished";
+        $("switchColorButton").textContent = `Switch to ${state.player_color === "white" ? "Black" : "White"}`;
       }
 
       function drawEloChart() {
@@ -324,13 +360,15 @@
 
       function renderAll() {
         renderBoard(); renderTelemetry(); renderHistory(); renderStatus(); drawEloChart();
+        const gameIsActive = state.status === "playing";
         $("turnText").textContent = state.turn.toUpperCase(); $("boardMessage").textContent = state.message; $("modePill").textContent = state.status.toUpperCase(); $("providerSelect").value = state.provider; $("colorSelect").value = state.player_color; $("assistRange").value = state.assist_rate; $("runtimeText").textContent = `${state.model_ready ? "checkpoint loaded" : "checkpoint missing"} · ${state.model_device}`;
+        $("setupPanel").hidden = gameIsActive; $("settingsButton").hidden = !gameIsActive; $("setupHint").textContent = gameIsActive ? "Provider is locked for this game. Open Game settings to configure the next one." : "Choose your side and engine before starting. The provider stays fixed during a game.";
       }
 
       async function loadArchitecture() { try { const data = await (await fetch("/api/architecture")).json(); $("archParams").textContent = `${(data.parameters / 1000000).toFixed(2)}M`; $("archTokens").textContent = data.tokens; $("archWidth").textContent = data.d_model; $("archPolicyFact").textContent = Number(data.policy_outputs).toLocaleString(); $("archDevice").textContent = data.device; $("archCheckpoint").textContent = data.checkpoint_loaded ? "loaded" : "not found"; $("archGeoBias").textContent = Number(data.geometric_attention_bias?.[1] ?? 0).toFixed(3); $("archLayers").textContent = data.layers; $("archHeads").textContent = data.heads; $("archPolicy").textContent = Number(data.policy_outputs).toLocaleString(); } catch (_) {} }
 
       document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => { document.querySelectorAll(".tab-button").forEach((item) => item.classList.remove("active")); document.querySelectorAll(".tab-panel").forEach((item) => item.classList.remove("active")); button.classList.add("active"); $(`tab-${button.dataset.tab}`).classList.add("active"); if (button.dataset.tab === "architecture") loadArchitecture(); }));
-      $("newGameButton").addEventListener("click", startNewGame); $("undoButton").addEventListener("click", undo); $("claimDrawButton").addEventListener("click", claimDraw); window.addEventListener("resize", drawEloChart);
+      $("newGameButton").addEventListener("click", startNewGame); $("undoButton").addEventListener("click", undo); $("claimDrawButton").addEventListener("click", claimDraw); $("switchColorButton").addEventListener("click", switchColor); $("settingsButton").addEventListener("click", showSetup); window.addEventListener("resize", drawEloChart);
       (async function init() { try { const response = await fetch("/api/state"); state = await response.json(); renderAll(); loadArchitecture(); } catch (error) { showToast("Could not connect to the Flask server.", true); } })();
     </script>
   </body>

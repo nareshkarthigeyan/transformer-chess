@@ -436,6 +436,22 @@ def api_new_game():
         return jsonify(_state_payload())
 
 
+@app.route("/api/switch-color", methods=["POST"])
+def api_switch_color():
+    """Switch the human side while preserving the current board position."""
+    with game_lock:
+        if game_state["status"] == "finished":
+            return jsonify({"error": "Start a new game before switching sides."}), 400
+        new_color = "black" if game_state["player_color"] == "white" else "white"
+        game_state["player_color"] = new_color
+        switch_message = f"You now play {new_color.title()}."
+        _finish_or_refresh(switch_message)
+        if game_state["status"] != "finished" and game_state["turn"] != new_color:
+            _engine_turn()
+            game_state["message"] = f"{switch_message} {game_state['message']}"
+        return jsonify(_state_payload())
+
+
 @app.route("/api/move", methods=["POST"])
 def api_move():
     payload = request.get_json(silent=True) or {}
