@@ -131,6 +131,7 @@
           <div class="arch-flow">
             <div class="arch-node"><strong>Board encoding</strong><span class="arch-detail">64 tokens, 13 pieces</span></div>
             <div class="arch-node"><strong>Spatial fusion</strong><span class="arch-detail">piece + row + column</span></div>
+            <div class="arch-node"><strong>Geometric attention bias</strong><span class="arch-detail">learned Manhattan-distance prior</span></div>
             <div class="arch-node"><strong>Transformer encoder × <span id="archLayers">4</span></strong><span class="arch-detail"><span id="archHeads">4</span> heads, GELU</span></div>
             <div class="arch-node"><strong>Policy head</strong><span class="arch-detail"><span id="archPolicy">4,096</span> outputs</span></div>
             <div class="arch-node"><strong>Value head</strong><span class="arch-detail">one output, tanh</span></div>
@@ -143,6 +144,7 @@
             <div class="fact"><span>Policy outputs</span><strong id="archPolicyFact">4,096</strong></div>
             <div class="fact"><span>Device</span><strong id="archDevice">—</strong></div>
             <div class="fact"><span>Checkpoint</span><strong id="archCheckpoint">—</strong></div>
+            <div class="fact"><span>Geometry bias (d=1)</span><strong id="archGeoBias">—</strong></div>
           </fieldset>
         </div>
       </section>
@@ -155,7 +157,7 @@
           </fieldset>
           <fieldset>
             <legend>Probe</legend>
-            <p>The policy head is applied to each encoder stream and masked to legal moves.</p>
+            <p>The policy head is applied to each encoder stream and masked to legal moves. It visualizes evolving scores, not human-like chain-of-thought.</p>
             <div class="lens-strip" id="lensStrip"><div class="empty">No lens data yet.</div></div>
           </fieldset>
         </div>
@@ -231,7 +233,9 @@
         const value = Number(telemetry.value || 0); const confidence = telemetry.layers?.at(-1)?.confidence || 0; const entropy = Number(telemetry.entropy || 0);
         const progress = (telemetry.layers || []).map((layer) => `<div class="lens-row"><span>${escapeHtml(layer.name)}</span><span class="lens-bar"><span class="lens-fill" style="width:${Math.max(4, Number(layer.confidence || 0) * 100)}%"></span></span><span>${escapeHtml(layer.san || "—")}</span></div>`).join("");
         const played = telemetry.played ? `<p>${escapeHtml(telemetry.played.provider)} played ${escapeHtml(telemetry.played.san)}.</p>` : "";
-        panel.innerHTML = `${played}<div class="metric-grid"><div class="metric"><label>Value</label><strong>${value >= 0 ? "+" : ""}${value.toFixed(2)}</strong></div><div class="metric"><label>Confidence</label><strong>${Math.round(confidence * 100)}%</strong></div><div class="metric"><label>Entropy</label><strong>${entropy.toFixed(2)}</strong></div></div><p>Layer moves</p><div class="lens-strip">${progress || `<div class="empty">No checkpoint loaded.</div>`}</div>`;
+        const review = telemetry.stockfish_review;
+        const reviewHtml = review?.available ? `<div class="panel"><strong>Live Stockfish move review</strong><div class="fact"><span>Quality</span><strong>${escapeHtml(review.quality)}</strong></div><div class="fact"><span>Centipawn loss</span><strong>${escapeHtml(review.centipawn_loss)}</strong></div><div class="fact"><span>Best move</span><strong>${escapeHtml(review.best_san || "—")}</strong></div><div class="fact"><span>Quality band</span><strong>${escapeHtml(review.heuristic_band)}</strong></div><small>${escapeHtml(review.note)}</small></div>` : (review?.warning ? `<div class="empty">Stockfish review unavailable: ${escapeHtml(review.warning)}</div>` : "");
+        panel.innerHTML = `${played}<div class="metric-grid"><div class="metric"><label>Value</label><strong>${value >= 0 ? "+" : ""}${value.toFixed(2)}</strong></div><div class="metric"><label>Confidence</label><strong>${Math.round(confidence * 100)}%</strong></div><div class="metric"><label>Entropy</label><strong>${entropy.toFixed(2)}</strong></div></div>${reviewHtml}<p>Layer moves</p><div class="lens-strip">${progress || `<div class="empty">No checkpoint loaded.</div>`}</div>`;
         renderLens(telemetry);
       }
 
@@ -253,7 +257,7 @@
         $("turnText").textContent = state.turn.toUpperCase(); $("boardMessage").textContent = state.message; $("modePill").textContent = state.status.toUpperCase(); $("providerSelect").value = state.provider; $("colorSelect").value = state.player_color; $("assistRange").value = state.assist_rate; $("runtimeText").textContent = `${state.model_ready ? "checkpoint loaded" : "checkpoint missing"} · ${state.model_device}`;
       }
 
-      async function loadArchitecture() { try { const data = await (await fetch("/api/architecture")).json(); $("archParams").textContent = `${(data.parameters / 1000000).toFixed(2)}M`; $("archTokens").textContent = data.tokens; $("archWidth").textContent = data.d_model; $("archPolicyFact").textContent = Number(data.policy_outputs).toLocaleString(); $("archDevice").textContent = data.device; $("archCheckpoint").textContent = data.checkpoint_loaded ? "loaded" : "not found"; $("archLayers").textContent = data.layers; $("archHeads").textContent = data.heads; $("archPolicy").textContent = Number(data.policy_outputs).toLocaleString(); } catch (_) {} }
+      async function loadArchitecture() { try { const data = await (await fetch("/api/architecture")).json(); $("archParams").textContent = `${(data.parameters / 1000000).toFixed(2)}M`; $("archTokens").textContent = data.tokens; $("archWidth").textContent = data.d_model; $("archPolicyFact").textContent = Number(data.policy_outputs).toLocaleString(); $("archDevice").textContent = data.device; $("archCheckpoint").textContent = data.checkpoint_loaded ? "loaded" : "not found"; $("archGeoBias").textContent = Number(data.geometric_attention_bias?.[1] ?? 0).toFixed(3); $("archLayers").textContent = data.layers; $("archHeads").textContent = data.heads; $("archPolicy").textContent = Number(data.policy_outputs).toLocaleString(); } catch (_) {} }
 
       document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => { document.querySelectorAll(".tab-button").forEach((item) => item.classList.remove("active")); document.querySelectorAll(".tab-panel").forEach((item) => item.classList.remove("active")); button.classList.add("active"); $(`tab-${button.dataset.tab}`).classList.add("active"); if (button.dataset.tab === "architecture") loadArchitecture(); }));
       $("newGameButton").addEventListener("click", startNewGame); $("undoButton").addEventListener("click", undo);

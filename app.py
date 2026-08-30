@@ -1,4 +1,5 @@
 import atexit
+import os
 import random
 from copy import deepcopy
 from threading import Lock, Thread
@@ -30,19 +31,40 @@ def _select_device():
 
 
 device = _select_device()
-model = ChessTransformer().to(device)
+checkpoint_path = os.environ.get("CHECKPOINT_PATH")
+if checkpoint_path is None:
+    checkpoint_path = "checkpoints/best.pt" if os.path.isfile("checkpoints/best.pt") else "checkpoint.pt"
+
+
+def _checkpoint_model_config(path):
+    if not os.path.isfile(path):
+        return {}
+    try:
+        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+        return checkpoint.get("model_config", {})
+    except (OSError, RuntimeError, KeyError):
+        return {}
+
+
+model = ChessTransformer.from_config(_checkpoint_model_config(checkpoint_path)).to(device)
 model_ready = False
 try:
-    load_checkpoint_weights(model, "checkpoint.pt", device)
-    model_ready = True
-    print("Web app engine loaded 'checkpoint.pt' successfully.")
+    loaded_checkpoint = load_checkpoint_weights(model, checkpoint_path, device)
+    model_ready = bool(loaded_checkpoint.get("model_config"))
+    if model_ready:
+        print(f"Web app engine loaded '{checkpoint_path}' successfully.")
+    else:
+        print(
+            f"Warning: '{checkpoint_path}' is a legacy checkpoint without model configuration. "
+            "Train with run_train.py and use checkpoints/best.pt for the browser model."
+        )
 except FileNotFoundError:
-    print("Warning: 'checkpoint.pt' not found. The UI will use an untrained fallback.")
+    print(f"Warning: '{checkpoint_path}' not found. The UI will use an untrained fallback.")
 except (KeyError, RuntimeError) as exc:
-    print(f"Warning: could not load 'checkpoint.pt': {exc}")
+    print(f"Warning: could not load '{checkpoint_path}': {exc}")
 
 transformer_provider = TransformerProvider(model, device)
-stockfish_provider = StockfishProvider(depth=10)
+stockfish_provider = StockfishProvider(depth=int(os.environ.get("STOCKFISH_REVIEW_DEPTH", "10")))
 game_lock = Lock()
 board = chess.Board()
 
@@ -141,6 +163,7 @@ def _fallback_analysis(current_board):
         "layers": layers,
         "top_moves": layers[-1]["top_moves"],
         "fallback": True,
+        "logic_lens_note": "No checkpoint is loaded, so the Logic Lens has no learned representation to probe.",
     }
 
 
@@ -323,7 +346,9 @@ def architecture():
             "policy_outputs": model.fc_out.out_features,
             "value_outputs": 1,
             "checkpoint_loaded": model_ready,
+            "checkpoint_path": checkpoint_path,
             "device": str(device),
+            "geometric_attention_bias": [round(value, 4) for value in model.geometry_profile()],
         }
     )
 
@@ -369,11 +394,21 @@ def api_move():
             return jsonify({"error": "That move is not legal in this position."}), 400
 
         san = board.san(move)
+        move_review = None
+        if stockfish_provider.available:
+            try:
+                move_review = stockfish_provider.review_move(board, move)
+            except (chess.engine.EngineError, OSError, KeyError) as exc:
+                move_review = {"available": False, "warning": str(exc)}
         board.push(move)
         _record_move(move, san, "you", "You")
         _finish_or_refresh(f"You played {san}.")
+        if move_review:
+            game_state["telemetry"] = {"stockfish_review": move_review}
         if not board.is_game_over() and game_state["turn"] != game_state["player_color"]:
             _engine_turn()
+            if move_review:
+                game_state["telemetry"]["stockfish_review"] = move_review
         return jsonify(_state_payload())
 
 
