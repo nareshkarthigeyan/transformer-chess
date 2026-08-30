@@ -59,7 +59,9 @@ human-move warm-up, Stockfish distillation, opening-aware plus tactical/endgame
 oversampling, and hard-example fine-tuning repeated for two rounds. The cache records game IDs so
 validation is split by complete games rather than random positions. This is a
 bounded same-day job on a free cloud GPU; actual time depends mostly on
-Stockfish labelling speed. Use `--preset smoke` to verify a new runtime,
+Stockfish labelling speed. The strong preset runs two independent CPU Stockfish
+workers in parallel; the GPU remains dedicated to transformer training. Use
+`--label-workers 1` for a deterministic single-engine run, or `--preset smoke` to verify a new runtime,
 `--preset presentation` for a smaller curriculum, or `--preset research` for a
 much slower depth-15 job.
 

@@ -6,6 +6,9 @@ import glob
 import json
 import os
 import shutil
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -31,6 +34,10 @@ MAX_LEGAL_MOVES = 256
 DEFAULT_DATASET_PATH = os.path.join("data", "stockfish_distilled_dataset.npz")
 DATASET_VERSION = 3
 
+_LABEL_THREAD_LOCAL = threading.local()
+_LABEL_THREAD_ENGINES = []
+_LABEL_THREAD_LOCK = threading.Lock()
+
 
 @dataclass(frozen=True)
 class StockfishConfig:
@@ -40,6 +47,33 @@ class StockfishConfig:
     centipawn_scale: int = 600
     multipv: int = 4
     policy_temperature: int = 120
+
+
+def _label_worker_init(engine_path: str, config: StockfishConfig, threads: int, hash_mb: int):
+    """Start one independent Stockfish subprocess for a parallel worker thread."""
+    engine = chess.engine.SimpleEngine.popen_uci(engine_path)
+    try:
+        engine.configure({"Threads": max(1, threads), "Hash": max(16, hash_mb)})
+    except chess.engine.EngineError:
+        pass
+    _LABEL_THREAD_LOCAL.engine = engine
+    _LABEL_THREAD_LOCAL.config = config
+    with _LABEL_THREAD_LOCK:
+        _LABEL_THREAD_ENGINES.append(engine)
+
+
+def _label_worker(fen: str):
+    """Analyse one FEN inside a persistent worker thread."""
+    board = chess.Board(fen)
+    teacher_move, value, top_ids, top_probs = _analyse_position(
+        _LABEL_THREAD_LOCAL.engine, board, _LABEL_THREAD_LOCAL.config
+    )
+    return (
+        teacher_move.uci() if teacher_move is not None else None,
+        value,
+        top_ids,
+        top_probs,
+    )
 
 
 def board_to_array(board: chess.Board) -> np.ndarray:
@@ -161,6 +195,46 @@ def _position_priority(board: chess.Board, human_move: chess.Move, teacher_move:
     return flags, np.float32(weight)
 
 
+def _append_labelled_position(
+    rows: dict,
+    board: chess.Board,
+    human_move: chess.Move,
+    result,
+    file_name: str,
+    game_id: str,
+    eco_code: str,
+    top_k: int,
+) -> bool:
+    """Convert one Stockfish result into the compact NumPy row format."""
+    teacher_move_uci, value, top_ids, top_probs = result
+    if teacher_move_uci is None:
+        return False
+    teacher_move = chess.Move.from_uci(teacher_move_uci)
+    if teacher_move not in board.legal_moves:
+        return False
+    padded_ids = np.full(top_k, -1, dtype=np.int16)
+    padded_probs = np.zeros(top_k, dtype=np.float32)
+    count = min(top_k, len(top_ids))
+    padded_ids[:count] = top_ids[:count]
+    padded_probs[:count] = top_probs[:count]
+    rows["boards"].append(board_to_array(board))
+    rows["state_features"].append(board_to_state_features(board))
+    rows["human_move_ids"].append(move_to_id(human_move))
+    rows["teacher_move_ids"].append(move_to_id(teacher_move))
+    rows["values"].append(value)
+    rows["legal_move_ids"].append(_legal_move_ids(board))
+    rows["teacher_top_move_ids"].append(padded_ids)
+    rows["teacher_top_probs"].append(padded_probs)
+    rows["fens"].append(board.fen())
+    rows["source_files"].append(file_name)
+    rows["game_ids"].append(game_id)
+    rows["eco_codes"].append(eco_code)
+    flags, weight = _position_priority(board, human_move, teacher_move, value)
+    rows["priority_flags"].append(flags)
+    rows["sampling_weights"].append(weight)
+    return True
+
+
 def _legal_move_ids(board: chess.Board) -> np.ndarray:
     ids = np.full(MAX_LEGAL_MOVES, -1, dtype=np.int16)
     for index, move in enumerate(board.legal_moves):
@@ -260,6 +334,8 @@ def build_stockfish_distilled_dataset(
     policy_temperature: int = 120,
     stockfish_threads: int = 2,
     stockfish_hash_mb: int = 256,
+    label_workers: int = 1,
+    label_batch_size: int = 256,
     resume: bool = True,
     checkpoint_interval: int = 2_000,
 ):
@@ -276,6 +352,10 @@ def build_stockfish_distilled_dataset(
         raise ValueError("max_positions must be positive")
     if teacher_multipv < 1:
         raise ValueError("teacher_multipv must be at least 1")
+    if label_workers < 1:
+        raise ValueError("label_workers must be at least 1")
+    if label_batch_size < 1:
+        raise ValueError("label_batch_size must be at least 1")
 
     engine_path = _resolve_stockfish_path(stockfish_path)
     pgn_files = sorted(glob.glob(os.path.join(data_dir, "*.pgn")))
@@ -325,6 +405,8 @@ def build_stockfish_distilled_dataset(
         "stockfish_path": engine_path,
         "stockfish_depth": stockfish_depth,
         "stockfish_time": stockfish_time,
+        "label_workers": label_workers,
+        "label_batch_size": label_batch_size,
         "teacher_multipv": teacher_multipv,
         "policy_temperature": policy_temperature,
         "sample_every": sample_every,
@@ -337,15 +419,59 @@ def build_stockfish_distilled_dataset(
     print(
         "Teacher budget: "
         f"{'time=' + str(stockfish_time) + 's' if stockfish_time is not None else 'depth=' + str(stockfish_depth)} "
-        f"| MultiPV={teacher_multipv} | sample every {sample_every} ply"
+        f"| MultiPV={teacher_multipv} | sample every {sample_every} ply | label workers={label_workers}"
     )
 
     selected_seen = 0
     interrupted = False
+    pool = None
+    pending = []
+    if label_workers > 1:
+        worker_threads = max(1, stockfish_threads // label_workers)
+        pool = ThreadPoolExecutor(
+            max_workers=label_workers,
+            initializer=_label_worker_init,
+            initargs=(engine_path, config, worker_threads, stockfish_hash_mb),
+        )
+
+    def flush_pending():
+        nonlocal pending, selected_seen
+        if not pending:
+            return
+        results = pool.map(_label_worker, [entry["fen"] for entry in pending], chunksize=1)
+        for entry, result in zip(pending, results):
+            added = _append_labelled_position(
+                rows,
+                chess.Board(entry["fen"]),
+                chess.Move.from_uci(entry["human_uci"]),
+                result,
+                entry["file_name"],
+                entry["game_id"],
+                entry["eco_code"],
+                top_k,
+            )
+            if not added:
+                continue
+            selected_seen += 1
+            count_rows = len(rows["boards"])
+            if count_rows % progress_interval == 0:
+                print(f"  labelled {count_rows:,} positions…")
+            if count_rows % checkpoint_interval == 0:
+                metadata["positions"] = count_rows
+                metadata["status"] = "partial"
+                _save_dataset(partial_path, rows, metadata)
+        pending = []
+
     try:
-        with chess.engine.SimpleEngine.popen_uci(engine_path) as engine:
+        engine_context = (
+            nullcontext(None)
+            if pool is not None
+            else chess.engine.SimpleEngine.popen_uci(engine_path)
+        )
+        with engine_context as engine:
             try:
-                engine.configure({"Threads": max(1, stockfish_threads), "Hash": max(16, stockfish_hash_mb)})
+                if engine is not None:
+                    engine.configure({"Threads": max(1, stockfish_threads), "Hash": max(16, stockfish_hash_mb)})
             except chess.engine.EngineError:
                 print("Stockfish did not accept Threads/Hash options; continuing with its defaults.")
 
@@ -356,7 +482,10 @@ def build_stockfish_distilled_dataset(
                 game_count = 0
                 print(f"Processing {file_name}…")
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as pgn:
-                    while max_games_per_file is None or game_count < max_games_per_file:
+                    while (
+                        (max_games_per_file is None or game_count < max_games_per_file)
+                        and (max_positions is None or len(rows["boards"]) < max_positions)
+                    ):
                         game = chess.pgn.read_game(pgn)
                         if game is None:
                             break
@@ -372,48 +501,57 @@ def build_stockfish_distilled_dataset(
                             if should_label:
                                 if selected_seen < skipped_selected_positions:
                                     selected_seen += 1
-                                elif max_positions is None or len(rows["boards"]) < max_positions:
-                                    teacher_move, value, top_ids, top_probs = _analyse_position(engine, board, config)
-                                    if teacher_move is not None:
-                                        padded_ids = np.full(top_k, -1, dtype=np.int16)
-                                        padded_probs = np.zeros(top_k, dtype=np.float32)
-                                        count = min(top_k, len(top_ids))
-                                        padded_ids[:count] = top_ids[:count]
-                                        padded_probs[:count] = top_probs[:count]
-                                        rows["boards"].append(board_to_array(board))
-                                        rows["state_features"].append(board_to_state_features(board))
-                                        rows["human_move_ids"].append(move_to_id(human_move))
-                                        rows["teacher_move_ids"].append(move_to_id(teacher_move))
-                                        rows["values"].append(value)
-                                        rows["legal_move_ids"].append(_legal_move_ids(board))
-                                        rows["teacher_top_move_ids"].append(padded_ids)
-                                        rows["teacher_top_probs"].append(padded_probs)
-                                        rows["fens"].append(board.fen())
-                                        rows["source_files"].append(file_name)
-                                        rows["game_ids"].append(f"{file_name}:{game_count}")
-                                        rows["eco_codes"].append(game.headers.get("ECO", "UNK"))
-                                        flags, weight = _position_priority(
-                                            board, human_move, teacher_move, value
-                                        )
-                                        rows["priority_flags"].append(flags)
-                                        rows["sampling_weights"].append(weight)
-                                        selected_seen += 1
-                                        count_rows = len(rows["boards"])
-                                        if count_rows % progress_interval == 0:
-                                            print(f"  labelled {count_rows:,} positions…")
-                                        if count_rows % checkpoint_interval == 0:
-                                            metadata["positions"] = count_rows
-                                            metadata["status"] = "partial"
-                                            _save_dataset(partial_path, rows, metadata)
+                                elif max_positions is None or len(rows["boards"]) + len(pending) < max_positions:
+                                    if pool is not None:
+                                        pending.append({
+                                            "fen": board.fen(),
+                                            "human_uci": human_move.uci(),
+                                            "file_name": file_name,
+                                            "game_id": f"{file_name}:{game_count}",
+                                            "eco_code": game.headers.get("ECO", "UNK"),
+                                        })
+                                        if (
+                                            len(pending) >= label_batch_size
+                                            or (max_positions is not None and len(rows["boards"]) + len(pending) >= max_positions)
+                                        ):
+                                            flush_pending()
+                                    else:
+                                        result = _analyse_position(engine, board, config)
+                                        if _append_labelled_position(
+                                            rows, board, human_move, (
+                                                result[0].uci() if result[0] is not None else None,
+                                                result[1], result[2], result[3],
+                                            ), file_name, f"{file_name}:{game_count}",
+                                            game.headers.get("ECO", "UNK"), top_k,
+                                        ):
+                                            selected_seen += 1
+                                            count_rows = len(rows["boards"])
+                                            if count_rows % progress_interval == 0:
+                                                print(f"  labelled {count_rows:,} positions…")
+                                            if count_rows % checkpoint_interval == 0:
+                                                metadata["positions"] = count_rows
+                                                metadata["status"] = "partial"
+                                                _save_dataset(partial_path, rows, metadata)
                                 else:
                                     break
                             board.push(human_move)
+                        flush_pending()
                         game_count += 1
                 print(f"  read {game_count:,} games from {file_name}")
     except KeyboardInterrupt:
         interrupted = True
         print("Distillation interrupted; saving a resumable partial cache.")
     finally:
+        if pool is not None:
+            pool.shutdown(wait=True, cancel_futures=True)
+            with _LABEL_THREAD_LOCK:
+                worker_engines = list(_LABEL_THREAD_ENGINES)
+                _LABEL_THREAD_ENGINES.clear()
+            for worker_engine in worker_engines:
+                try:
+                    worker_engine.quit()
+                except Exception:
+                    pass
         metadata["positions"] = len(rows["boards"])
         metadata["status"] = "partial" if interrupted else "complete"
         if rows["boards"]:

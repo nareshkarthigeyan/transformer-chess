@@ -37,24 +37,28 @@ PRESETS = {
         "d_model": 96, "nhead": 4, "num_layers": 3, "dim_feedforward": 384,
         "batch_size": 128, "sample_every": 2, "curriculum": False,
         "human_epochs": 0, "distill_epochs": 3, "hard_epochs": 0, "rounds": 1,
+        "label_workers": 1, "label_batch_size": 128,
     },
     "presentation": {
         "max_positions": 60_000, "stockfish_time": 0.08,
         "d_model": 128, "nhead": 4, "num_layers": 4, "dim_feedforward": 512,
         "batch_size": 256, "sample_every": 1, "curriculum": True,
         "human_epochs": 1, "distill_epochs": 6, "hard_epochs": 1, "rounds": 1,
+        "label_workers": 1, "label_batch_size": 256,
     },
     "strong": {
         "max_positions": 200_000, "stockfish_time": 0.08,
         "d_model": 128, "nhead": 4, "num_layers": 4, "dim_feedforward": 512,
         "batch_size": 256, "sample_every": 1, "curriculum": True,
         "human_epochs": 3, "distill_epochs": 10, "hard_epochs": 2, "rounds": 2,
+        "label_workers": 2, "label_batch_size": 256,
     },
     "research": {
         "max_positions": 300_000, "stockfish_time": None, "stockfish_depth": 15,
         "d_model": 192, "nhead": 6, "num_layers": 6, "dim_feedforward": 768,
         "batch_size": 192, "sample_every": 1, "curriculum": True,
         "human_epochs": 3, "distill_epochs": 12, "hard_epochs": 3, "rounds": 2,
+        "label_workers": 2, "label_batch_size": 256,
     },
 }
 
@@ -102,6 +106,8 @@ def parse_args(argv=None):
     parser.add_argument("--policy-temperature", type=int, default=120)
     parser.add_argument("--stockfish-threads", type=int, default=2)
     parser.add_argument("--stockfish-hash-mb", type=int, default=256)
+    parser.add_argument("--label-workers", type=int, default=None, help="Parallel Stockfish worker processes (1 disables parallel labelling).")
+    parser.add_argument("--label-batch-size", type=int, default=None, help="Positions queued per parallel labelling batch.")
     parser.add_argument("--d-model", type=int, default=None)
     parser.add_argument("--nhead", type=int, default=None)
     parser.add_argument("--num-layers", type=int, default=None)
@@ -313,7 +319,8 @@ def main(argv=None):
             max_positions=args.max_positions, sample_every=args.sample_every,
             min_ply=args.min_ply, max_ply=args.max_ply, teacher_multipv=args.teacher_multipv,
             policy_temperature=args.policy_temperature, stockfish_threads=args.stockfish_threads,
-            stockfish_hash_mb=args.stockfish_hash_mb, resume=not args.no_resume_dataset,
+            stockfish_hash_mb=args.stockfish_hash_mb, label_workers=args.label_workers,
+            label_batch_size=args.label_batch_size, resume=not args.no_resume_dataset,
         )
         if result_path != args.dataset_path:
             logger.write(f"dataset labelling paused; resume with the same command ({result_path})")

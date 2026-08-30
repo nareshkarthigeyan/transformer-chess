@@ -9,6 +9,8 @@ COLAB / KAGGLE GPU (paste one cell; no cd needed)
 The launcher installs Stockfish and Python packages. If data/*.pgn is absent,
 it downloads a bounded public Lichess PGN corpus. It writes best.pt, last.pt,
 epoch snapshots, training.log.txt, JSONL metrics, and a JSON summary.
+The strong preset uses two parallel Stockfish label workers; set
+`--label-workers 1` if you need single-engine deterministic labelling.
 
 
 PERSIST COLAB OUTPUTS ON DRIVE

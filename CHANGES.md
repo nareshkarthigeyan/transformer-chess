@@ -12,6 +12,9 @@
 - Dataset schema v3 stores game IDs, ECO codes, priority flags, and sampling
   weights. Hard-example weights are checkpoint-directory `.npy` artifacts and
   all stage/epoch state is embedded in `last.pt` and `best.pt`.
+- Parallel labelling uses independent persistent Stockfish subprocesses from
+  CPU worker threads (`--label-workers`); board encodings are cached once so
+  the GPU is not wasted repeating Python/chess preprocessing during training.
 
 - `scripts/cloud_train.sh`: one-command Colab/Kaggle GPU installer, Stockfish
   provisioner, optional public PGN bootstrapper, dataset builder, and trainer.
