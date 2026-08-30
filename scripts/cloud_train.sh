@@ -29,6 +29,8 @@ fi
 
 data_dir="${DATA_DIR:-data}"
 has_data_arg=0
+checkpoint_dir="checkpoints"
+has_resume_arg=0
 for ((arg_index = 1; arg_index <= $#; arg_index++)); do
   arg_value="${!arg_index}"
   case "$arg_value" in
@@ -43,6 +45,14 @@ for ((arg_index = 1; arg_index <= $#; arg_index++)); do
       data_dir="${arg_value#*=}"
       has_data_arg=1
       ;;
+    --checkpoint-dir)
+      next_index=$((arg_index + 1))
+      if (( next_index <= $# )); then
+        checkpoint_dir="${!next_index}"
+      fi
+      ;;
+    --checkpoint-dir=*) checkpoint_dir="${arg_value#*=}" ;;
+    --resume|--resume=*) has_resume_arg=1 ;;
   esac
 done
 
@@ -66,5 +76,9 @@ touch "$data_dir/.diverse_corpus_v2"
 train_args=("$@")
 if (( has_data_arg == 0 )) && [[ -n "${DATA_DIR:-}" ]]; then
   train_args+=(--data-dir "$data_dir")
+fi
+if (( has_resume_arg == 0 )) && [[ -f "$checkpoint_dir/last.pt" ]]; then
+  echo "Existing checkpoint detected; resuming automatically from $checkpoint_dir/last.pt."
+  train_args+=(--resume auto)
 fi
 python3 run_train.py --preset "${TRAIN_PRESET:-strong}" "${train_args[@]}"
