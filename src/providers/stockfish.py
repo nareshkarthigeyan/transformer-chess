@@ -126,6 +126,72 @@ class StockfishProvider:
             "note": "Heuristic move-quality band; it is not an official player Elo estimate.",
         }
 
+    @staticmethod
+    def _centipawns(score, perspective: chess.Color) -> int:
+        return int(score.pov(perspective).score(mate_score=10_000) or 0)
+
+    @staticmethod
+    def _quality_band(centipawn_loss: int) -> str:
+        if centipawn_loss <= 15:
+            return "Excellent"
+        if centipawn_loss <= 45:
+            return "Good"
+        if centipawn_loss <= 100:
+            return "Inaccuracy"
+        if centipawn_loss <= 250:
+            return "Mistake"
+        return "Blunder"
+
+    @staticmethod
+    def _heuristic_band(centipawn_loss: int) -> str:
+        """A move-quality band, explicitly not a player Elo calculation."""
+        if centipawn_loss <= 15:
+            return "1800+ quality band"
+        if centipawn_loss <= 45:
+            return "1400–1800 quality band"
+        if centipawn_loss <= 100:
+            return "1000–1400 quality band"
+        return "below 1000 quality band"
+
+    def review_move(self, board: chess.Board, move: chess.Move) -> dict:
+        """Analyse a played legal move using centipawn loss at fixed depth.
+
+        A single move cannot reveal a person's Elo, so the returned ``quality``
+        and ``heuristic_band`` are deliberately framed as local diagnostics.
+        """
+        if move not in board.legal_moves:
+            raise ValueError("Cannot review an illegal move.")
+        self.start()
+        side = board.turn
+        infos = self.engine.analyse(board, chess.engine.Limit(depth=self.depth), multipv=1)
+        if isinstance(infos, list):
+            infos = infos[0]
+        best_move = (infos.get("pv") or [None])[0]
+        best_score = self._centipawns(infos["score"], side) if infos.get("score") else 0
+        played_san = board.san(move)
+        after = board.copy(stack=False)
+        after.push(move)
+        played_info = self.engine.analyse(after, chess.engine.Limit(depth=self.depth), multipv=1)
+        if isinstance(played_info, list):
+            played_info = played_info[0]
+        played_score = (
+            self._centipawns(played_info["score"], side) if played_info.get("score") else best_score
+        )
+        centipawn_loss = max(0, best_score - played_score)
+        return {
+            "available": True,
+            "depth": self.depth,
+            "best_move": best_move.uci() if best_move else None,
+            "best_san": board.san(best_move) if best_move else None,
+            "played_san": played_san,
+            "best_centipawns": best_score,
+            "played_centipawns": played_score,
+            "centipawn_loss": centipawn_loss,
+            "quality": self._quality_band(centipawn_loss),
+            "heuristic_band": self._heuristic_band(centipawn_loss),
+            "note": "Heuristic move-quality band; it is not an official player Elo estimate.",
+        }
+
     def close(self):
         if self.engine is not None:
             self.engine.quit()
