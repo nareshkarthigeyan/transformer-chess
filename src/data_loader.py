@@ -244,6 +244,11 @@ def _legal_move_ids(board: chess.Board) -> np.ndarray:
     return ids
 
 
+def _move_from_id(board: chess.Board, move_id: int):
+    """Recover a legal move from the compact source/destination bucket."""
+    return next((move for move in board.legal_moves if move_to_id(move) == int(move_id)), None)
+
+
 def _analyse_position(engine, board: chess.Board, config: StockfishConfig):
     """Return top teacher move, side-to-move value, and a soft top-k policy."""
     infos = engine.analyse(board, _engine_limit(config), multipv=config.multipv)
@@ -308,14 +313,63 @@ def _save_dataset(path: str, rows: dict, metadata: dict) -> None:
 def _load_partial(path: str) -> tuple[dict, dict]:
     loaded = np.load(path, allow_pickle=False)
     metadata = json.loads(str(loaded["metadata"].item()))
-    required = [
+    base_required = [
         "boards", "state_features", "human_move_ids", "teacher_move_ids", "values",
         "legal_move_ids", "teacher_top_move_ids", "teacher_top_probs", "fens", "source_files",
-        "priority_flags", "sampling_weights", "game_ids", "eco_codes",
     ]
-    if any(key not in loaded for key in required):
+    if any(key not in loaded for key in base_required):
         raise ValueError("Partial dataset was created by an incompatible pipeline version.")
-    return ({key: loaded[key].tolist() for key in required}, metadata)
+    rows = {key: loaded[key].tolist() for key in base_required}
+    version = int(metadata.get("dataset_version", 0))
+    if version < DATASET_VERSION:
+        # Version 2 did not store curriculum metadata. Reconstruct it from the
+        # saved FENs and compact move buckets instead of discarding labelled work.
+        if version != 2:
+            raise ValueError("Partial dataset was created by an incompatible pipeline version.")
+        flags, weights = [], []
+        for fen, human_id, teacher_id, value in zip(
+            rows["fens"], rows["human_move_ids"], rows["teacher_move_ids"], rows["values"]
+        ):
+            board = chess.Board(fen)
+            human_move = _move_from_id(board, human_id)
+            teacher_move = _move_from_id(board, teacher_id)
+            if human_move is None or teacher_move is None:
+                flag = np.asarray([0, 0, int(board.fullmove_number <= 10)], dtype=np.uint8)
+                weight = np.float32(1.0 + 0.5 * min(1.0, abs(float(value))))
+            else:
+                flag, weight = _position_priority(board, human_move, teacher_move, float(value))
+            flags.append(flag)
+            weights.append(weight)
+        rows["priority_flags"] = flags
+        rows["sampling_weights"] = weights
+        # Source-file grouping is conservative for old caches: it prevents
+        # cross-file leakage even though version 2 did not preserve game IDs.
+        rows["game_ids"] = list(rows["source_files"])
+        rows["eco_codes"] = ["UNK"] * len(rows["boards"])
+        metadata = {**metadata, "dataset_version": DATASET_VERSION, "migrated_from_version": version}
+    else:
+        required = ["priority_flags", "sampling_weights", "game_ids", "eco_codes"]
+        if any(key not in loaded for key in required):
+            raise ValueError("Partial dataset was created by an incompatible pipeline version.")
+        rows.update({key: loaded[key].tolist() for key in required})
+    return rows, metadata
+
+
+def upgrade_dataset_cache(path: str) -> bool:
+    """Upgrade a version-2 complete cache in place without relabelling it."""
+    if not os.path.isfile(path):
+        return False
+    try:
+        with np.load(path, allow_pickle=False) as loaded:
+            metadata = json.loads(str(loaded["metadata"].item())) if "metadata" in loaded else {}
+            if int(metadata.get("dataset_version", 0)) >= DATASET_VERSION:
+                return False
+        rows, upgraded_metadata = _load_partial(path)
+    except (OSError, ValueError, KeyError, json.JSONDecodeError):
+        return False
+    upgraded_metadata["status"] = "complete"
+    _save_dataset(path, rows, upgraded_metadata)
+    return True
 
 
 def build_stockfish_distilled_dataset(

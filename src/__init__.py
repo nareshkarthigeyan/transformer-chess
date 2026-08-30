@@ -7,6 +7,7 @@ from .data_loader import (
     board_to_sequence,
     build_stockfish_distilled_dataset,
     move_to_id,
+    upgrade_dataset_cache,
 )
 from .model import ChessTransformer
 from .train import collect_hard_example_weights, load_checkpoint_weights, save_checkpoint, train_one_epoch
@@ -39,6 +40,7 @@ __all__ = [
     "ChessNumpyDataset",
     "ChessPGNDataset",
     "build_stockfish_distilled_dataset",
+    "upgrade_dataset_cache",
     "ChessTransformer",
     "train_one_epoch",
     "save_checkpoint",

@@ -19,6 +19,7 @@ from src.data_loader import (
     DEFAULT_DATASET_PATH,
     ChessNumpyDataset,
     build_stockfish_distilled_dataset,
+    upgrade_dataset_cache,
 )
 from src.model import ChessTransformer
 from src.train import (
@@ -308,7 +309,12 @@ def main(argv=None):
     if device.type == "cuda":
         logger.write(f"gpu={torch.cuda.get_device_name(device)}")
 
-    if args.rebuild_dataset or not os.path.isfile(args.dataset_path) or _cache_needs_rebuild(args.dataset_path):
+    cache_needs_rebuild = _cache_needs_rebuild(args.dataset_path) if os.path.isfile(args.dataset_path) else True
+    if cache_needs_rebuild and not args.rebuild_dataset and os.path.isfile(args.dataset_path):
+        if upgrade_dataset_cache(args.dataset_path):
+            logger.write("migrated existing dataset cache to curriculum schema without relabelling")
+            cache_needs_rebuild = _cache_needs_rebuild(args.dataset_path)
+    if args.rebuild_dataset or not os.path.isfile(args.dataset_path) or cache_needs_rebuild:
         if args.train_only:
             raise FileNotFoundError(f"Dataset cache is absent or older than schema v{DATASET_VERSION}: {args.dataset_path}")
         logger.write("building/resuming Stockfish-distilled dataset")
