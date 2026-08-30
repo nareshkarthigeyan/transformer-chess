@@ -1,7 +1,7 @@
 # src/evaluate.py
 import torch
 import torch.nn.functional as F
-from .data_loader import board_to_sequence
+from .data_loader import board_to_sequence, board_to_state_tensor
 
 def get_best_move(model, board, device):
     """
@@ -12,9 +12,10 @@ def get_best_move(model, board, device):
     with torch.no_grad():
         # 1. Convert current board to tensor and push to device
         board_seq = board_to_sequence(board).unsqueeze(0).to(device)
+        state_features = board_to_state_tensor(board).unsqueeze(0).to(device)
         
         # 2. Get move probabilities (logits)
-        logits = model(board_seq)  # Shape: (1, 4096)
+        logits = model(board_seq, state_features=state_features)  # Shape: (1, 4096)
         probabilities = F.softmax(logits, dim=-1).squeeze(0)
         
         # 3. Filter for ONLY legal moves (Illegal Move Masking)
@@ -32,7 +33,15 @@ def get_best_move(model, board, device):
             move_id = move.from_square * 64 + move.to_square
             move_prob = probabilities[move_id].item()
             
-            if move_prob > best_prob:
+            # The compact source/destination policy has one bucket for all
+            # promotion pieces. Prefer queen on an exact tie, which is the
+            # conventional default and remains fully legal.
+            prefer_queen = (
+                move_prob == best_prob
+                and move.promotion == chess.QUEEN
+                and (best_move is None or best_move.promotion != chess.QUEEN)
+            )
+            if move_prob > best_prob or prefer_queen:
                 best_prob = move_prob
                 best_move = move
                 

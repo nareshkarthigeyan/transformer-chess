@@ -1,269 +1,159 @@
----
-license: mit
-tags:
-  - chess
-  - transformer
-  - reinforcement-learning
-pipeline_tag: reinforcement-learning
----
+# Let's Think Chess — Stockfish-Distilled Geometry Transformer
 
-# Transformer Chess
+An end-to-end research/demo pipeline for a compact chess transformer. It learns
+from PGN positions using Stockfish policy and value supervision, applies a
+learned geometric attention bias, saves resumable checkpoints, and serves a
+browser playground with live Stockfish move review and a layer-wise Logic Lens.
 
-Transformer Chess is a compact research workspace for training, playing, and
-inspecting a transformer-based chess move predictor. The model learns from PGN
-positions, masks predictions to legal moves, and can be evaluated against a
-random bot or a depth-limited Stockfish baseline.
+The project is deliberately runnable on a free Colab or Kaggle GPU. It is also
+honest about measurement: a small corpus cannot guarantee a particular Elo, and
+the included benchmark reports a **baseline-relative proxy**, not FIDE/Lichess
+rating.
 
-## What This Project Contains
+## One-command cloud run
 
-- A PyTorch transformer model for board-state to move prediction.
-- PGN ingestion that converts board positions into cached NumPy arrays.
-- Stockfish distillation that labels each position with a teacher policy move
-  and side-to-move value target.
-- Legal-move masking at inference time through `python-chess`.
-- A CLI training script for generating `checkpoint.pt`.
-- A CLI evaluator that exports PGN games and representative GIF animations.
-- A standalone GIF/WebM/MP4 generator for existing exported PGN files.
-- A polished Flask playground for playing the model, inspecting its architecture,
-  and probing every encoder layer with a legal-move-masked logit lens.
-- An isolated Stockfish provider with Transformer-only, Stockfish-only, and
-  transparent 50–70% Hybrid routing modes.
-- A sanity-check script for verifying that the training loop can overfit a tiny
-  PGN sample.
+Turn on a **GPU** runtime first. Then use one notebook cell after cloning:
 
-## Repository Layout
+```bash
+!git clone https://github.com/nareshkarthigeyan/transformer-chess.git
+%cd transformer-chess
+!bash scripts/cloud_train.sh
+```
+
+The script installs Python packages and Stockfish, downloads a bounded public
+PGN corpus only when `data/*.pgn` is absent, builds/resumes the teacher cache,
+trains the `presentation` preset, and writes every artifact below. It needs no
+manual Stockfish download or path setup.
+
+To use the project PGNs you already have, place them in `data/` before the last
+command. To retain checkpoints across a Colab reset, mount Drive and point the
+checkpoint/log outputs at it:
+
+```bash
+!bash scripts/cloud_train.sh \
+  --data-dir /content/drive/MyDrive/chess_pgns \
+  --checkpoint-dir /content/drive/MyDrive/let_think_chess/checkpoints \
+  --log-path /content/drive/MyDrive/let_think_chess/logs/training.log.txt \
+  --metrics-path /content/drive/MyDrive/let_think_chess/logs/training_metrics.jsonl
+```
+
+The same command works in a Kaggle notebook cell. Kaggle's `/kaggle/working/`
+is the appropriate location for outputs. GPU is the tested accelerator path.
+TPU requires a matching `torch-xla` installation; it is intentionally not
+installed automatically because Colab's XLA builds are runtime/version-specific.
+
+## What `cloud_train.sh` runs
 
 ```text
-.
-|-- app.py                 # Flask playground and tournament API
-|-- commands.txt           # Fresh-install commands for macOS, Linux, Windows
-|-- evaluate_elo.py        # CLI benchmark runner
-|-- generate_gifs.py       # Regenerate GIFs/WebMs/MP4s from exports/pgns
-|-- play.py                # Terminal game against the trained model
-|-- prepare_dataset.py     # Build cached Stockfish-distilled NumPy dataset
-|-- run_sanity_check.py    # Small overfit test for the training loop
-|-- run_train.py           # Main training entry point
-|-- requirements.txt       # Python dependencies
-|-- src/
-|   |-- data_loader.py     # PGN parsing, Stockfish distillation, NumPy dataset
-|   |-- evaluate.py        # Legal move masked inference
-|   |-- exporter.py        # PGN and GIF export
-|   |-- model.py           # Transformer architecture
-|   |-- tournament.py      # Shared tournament simulation logic
-|   `-- train.py           # Training and checkpoint helpers
-`-- templates/
-    `-- index.html         # Tabbed play / architecture / logit-lens UI
-|-- src/providers/
-    |-- stockfish.py       # Optional UCI provider
-    `-- transformer.py     # Model inference + layer probes
+PGN games
+  → Stockfish MultiPV teacher labels (policy + value)
+  → compressed NumPy cache, resumable as *.partial.npz
+  → legality-masked policy/value transformer training
+  → last / epoch / best full checkpoints
+  → plain-text log + JSONL metrics + JSON summary
 ```
 
-## Setup
+The `presentation` preset limits itself to 30,000 positions, uses a 30 ms
+Stockfish teacher budget with MultiPV=4, and trains a 4-layer, width-128 model
+for 24 epochs. It is a bounded same-day job; actual time depends mostly on the
+cloud GPU and Stockfish labelling speed. Use `--preset smoke` to verify a new
+runtime, or `--preset research` for a much slower depth-15 job.
 
-Use Python 3.10 or newer. A virtual environment is recommended.
+## Outputs and recovery
+
+| Artifact | Purpose |
+| --- | --- |
+| `data/stockfish_distilled_dataset.npz` | Policy/value cache including legal move masks and board state |
+| `data/stockfish_distilled_dataset.partial.npz` | Safe label-generation recovery point |
+| `checkpoints/last.pt` | Latest full resumable checkpoint |
+| `checkpoints/best.pt` | Lowest validation-loss checkpoint; use this for the app |
+| `checkpoints/epoch_*.pt` | Periodic epoch snapshots for ablations or rollback (every 4 epochs by default) |
+| `logs/training.log.txt` | Human-readable timestamped training journal |
+| `logs/training_metrics.jsonl` | One machine-readable train/validation record per epoch |
+| `reports/training_summary.json` | Compact final training summary |
+
+If a Colab session disconnects, rerun exactly the same command. Dataset
+labelling continues from the partial cache and training continues with:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python run_train.py --preset presentation --resume auto
 ```
 
-The project expects PGN files in `data/`. Model checkpoints are written to
-`checkpoint.pt` by default. Both are ignored by Git because they are local
-artifacts.
-
-## Optional System Dependencies
-
-Stockfish evaluation looks for `STOCKFISH_PATH`, a `stockfish` executable on
-`PATH`, and common macOS/Linux locations:
+## Local training and evaluation
 
 ```bash
-brew install stockfish
+python -m pip install -r requirements.txt
+python run_train.py --preset presentation
+python evaluate_elo.py --checkpoint checkpoints/best.pt --media
+CHECKPOINT_PATH=checkpoints/best.pt python app.py
 ```
 
-On Windows, install the binary and set `STOCKFISH_PATH` to its full path before
-starting the app.
+The app is served at `http://127.0.0.1:5001`. Training in Colab/Kaggle and
+running the Flask interface locally is the simplest presentation workflow:
+download `checkpoints/best.pt`, then start the last command on your laptop.
 
-If Stockfish is not installed, random-bot evaluation still works.
+`evaluate_elo.py` alternates colours against a uniform-random legal mover and,
+when Stockfish is present, a fixed depth-1 Stockfish baseline. It exports PGNs,
+optional representative GIF/WebM/MP4 files, `reports/evaluation.json`, and
+`logs/evaluation.log.txt`. The numeric result is a reproducible baseline
+**proxy**, not official Elo. For the demo, show the record, legal-move rate,
+Stockfish centipawn-loss reviews, and the stated evaluation conditions.
 
-## Training
+## Model and research claims
 
-Place PGN files in `data/`, then build the cached Stockfish-distilled NumPy
-dataset:
+- **Input:** 64 piece tokens plus side-to-move, castling, en-passant, and clock
+  state features.
+- **Geometry:** every self-attention layer receives a learned additive bias by
+  Manhattan distance between board squares. Its learned values are exposed in
+  the Architecture tab.
+- **Teacher:** Stockfish supplies a hard best move, top-`k` soft MultiPV move
+  distribution, and side-to-move value target.
+- **Loss:** legal-masked hard policy cross-entropy mixed with soft teacher
+  policy loss, plus weighted value MSE.
+- **Legality:** selection always searches `python-chess` legal moves; the model
+  cannot play an illegal move.
+- **Logic Lens:** applies the trained policy head to input and each encoder
+  residual stream, then displays only legal-move scores. It is a post-hoc
+  interpretability diagnostic—not model chain-of-thought.
+
+The compact 4,096 policy head represents source/destination squares. Promotion
+piece choice is still a known limitation: the UI prefers queen promotion when
+promotion choices share a bucket. This does not allow illegal moves, but a
+research-grade next revision should use a full promotion-aware action space.
+
+## Presentation-ready web interface
+
+Run `CHECKPOINT_PATH=checkpoints/best.pt python app.py` and open the three tabs:
+
+- **Play:** legality-checked browser chess board, transformer/Stockfish/hybrid
+  routing, confidence, value, and entropy.
+- **Architecture:** model size, device, checkpoint state, and learned geometry
+  bias.
+- **Logit lens:** how top legal move scores shift from input projection through
+  every encoder layer.
+
+After a human move, the interface requests a fixed-depth live Stockfish review:
+best move, centipawn loss, quality label, and an explicitly heuristic quality
+band. A single move does not determine a player's Elo, so the UI never claims
+that it does.
+
+## Common commands
 
 ```bash
-python prepare_dataset.py
-```
+# Fast installation/runtime proof
+python run_train.py --preset smoke --max-positions 1000
 
-By default, this writes `data/stockfish_distilled_dataset.npz`, labels all PGN
-positions with Stockfish depth 15, stores the Stockfish best move as the policy
-target, and stores a side-to-move value target in `[-1, 1]`.
+# Rebuild labels after changing PGNs or teacher settings
+python run_train.py --preset presentation --rebuild-dataset
 
-Useful distillation options:
+# Use a public Lichess account explicitly
+python scripts/download_lichess_games.py --user DrNykterstein --max-games 800
 
-```bash
-python prepare_dataset.py --stockfish-depth 15
-python prepare_dataset.py --stockfish-time 0.1
-python prepare_dataset.py --max-games-per-file 200
-```
+# Inspect one model checkpoint through the UI
+CHECKPOINT_PATH=checkpoints/best.pt bash scripts/run_web.sh
 
-`--stockfish-time` is measured in seconds and overrides depth. Use `0.1` for a
-100 ms per-position teacher budget.
-
-After the cache exists, train from the NumPy arrays:
-
-```bash
-python run_train.py
-```
-
-`run_train.py` automatically builds the cache if it is missing. Pass
-`--rebuild-dataset` to force regeneration after changing PGNs or teacher
-settings:
-
-```bash
-python run_train.py --rebuild-dataset --stockfish-depth 15
-python run_train.py --dataset-path data/stockfish_distilled_dataset.npz --epochs 10
-```
-
-The model trains with an AlphaZero-style policy head plus value head. Policy
-loss distills Stockfish's best legal move, while value loss distills the
-Stockfish evaluation for the side to move.
-
-## Evaluation
-
-Run the benchmark suite after training:
-
-```bash
-python evaluate_elo.py
-```
-
-The evaluator:
-
-- Loads `checkpoint.pt`.
-- Runs 20 games against the random bot.
-- Runs 20 games against Stockfish depth 1 when Stockfish is available.
-- Saves PGN files to `exports/pgns/`.
-- Saves representative GIFs to `exports/gifs/`.
-- Saves compressed WebM videos to `exports/webm/`.
-- Saves compressed MP4 videos to `exports/mp4/`.
-- Prints a consolidated Elo-style performance estimate.
-
-GIFs use a blue board, filled chess-piece glyphs, and a footer that shows match
-number, opponent type, result, side color swatches, ply count, and last move.
-
-## Regenerate GIFs, WebMs, And MP4s From PGNs
-
-To generate GIF and WebM files from PGNs that already exist in `exports/pgns/`,
-run the default command:
-
-```bash
-python generate_gifs.py
-```
-
-Useful options:
-
-```bash
-python generate_gifs.py --pgn-dir exports/pgns --duration 1
-python generate_gifs.py --limit 3
-python generate_gifs.py --format webm --webm-crf 34
-python generate_gifs.py --format mp4 --mp4-crf 32
-python generate_gifs.py --format all
-```
-
-WebM output uses VP9 with constant-quality compression. Lower CRF values produce
-larger, cleaner files; higher CRF values produce smaller files. `34` is a good
-blog-friendly default for this board animation style.
-
-MP4 output uses H.264 with constant-quality compression and faststart metadata.
-`32` is the default MP4 CRF and is intended to keep typical generated games in
-the 500 KB to 1 MB range or lower while preserving readable pieces and text.
-
-## Web Dashboard
-
-Start the Flask dashboard:
-
-```bash
-python app.py
-```
-
-Then open:
-
-```text
-http://127.0.0.1:5001
-```
-
-The dashboard runs a background tournament thread and polls the current board
-state, move log, and final benchmark metrics.
-
-The main interface has three tabs:
-
-- Playground: click-to-move chess board, move history, live value, confidence,
-  entropy, and provider routing.
-- Architecture: the token, encoder, policy-head, and value-head shape loaded
-  from the model.
-- Logit lens: the policy head projected over the input stream and each encoder
-  layer, restricted to legal moves.
-
-Exact fresh-install commands for macOS, Linux, and Windows are in
-`commands.txt`. The checkpoint is downloaded from the Hugging Face model repo
-instead of being committed to Git.
-
-Stockfish assistance is implemented as a standalone provider so it can be
-removed later. Hybrid mode keeps the assist rate in the 50–70% range and labels
-the provider used for each engine move in the UI.
-
-## Play In The Terminal
-
-After training, you can play White against the model:
-
-```bash
-python play.py
-```
-
-Enter moves in UCI format, for example `e2e4` or `g1f3`. Type `quit` to exit.
-
-## Sanity Check
-
-Before running a full training job, validate the basic training loop:
-
-```bash
+# Basic code/model smoke test
 python run_sanity_check.py
 ```
 
-This script builds a tiny dataset from one PGN string and verifies that the
-model, loss function, optimizer, and data conversion path work together.
-
-## Notes On The Model
-
-The current model encodes each board as 64 tokens:
-
-- `0` for empty squares.
-- `1` through `6` for white pawn, knight, bishop, rook, queen, and king.
-- `7` through `12` for black pawn, knight, bishop, rook, queen, and king.
-
-The output space is `4096`, representing `from_square * 64 + to_square`.
-Promotion piece choice is not modeled separately yet; this is a known
-simplification.
-
-## Generated Files
-
-The following are treated as local artifacts and should not be committed:
-
-- `checkpoint.pt`
-- `data/`
-- `exports/`
-- `__pycache__/`
-- virtual environments and tool caches
-
-## Common Issues
-
-`checkpoint.pt` missing:
-Run `python run_train.py` first.
-
-Stockfish binary not found:
-Install Stockfish or use the random-bot benchmark.
-
-NumPy and Matplotlib binary mismatch:
-The exporter does not depend on Matplotlib or Cairo. Reinstall dependencies in a
-clean virtual environment if your global Python environment has incompatible
-compiled packages.
+See [CHANGES.md](CHANGES.md) for the implementation and presentation checklist.

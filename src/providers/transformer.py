@@ -4,7 +4,7 @@ import chess
 import torch
 import torch.nn.functional as F
 
-from ..data_loader import board_to_sequence, move_to_id
+from ..data_loader import board_to_sequence, board_to_state_tensor, move_to_id
 
 
 def _move_label(board: chess.Board, move: chess.Move) -> dict:
@@ -23,12 +23,20 @@ class TransformerProvider:
     def analyze(self, board: chess.Board, top_k: int = 4) -> dict:
         self.model.eval()
         board_tensor = board_to_sequence(board).unsqueeze(0).to(self.device)
+        state_tensor = board_to_state_tensor(board).unsqueeze(0).to(self.device)
         legal_moves = list(board.legal_moves)
-        legal_ids = torch.tensor(
-            [move_to_id(move) for move in legal_moves],
-            dtype=torch.long,
-            device=self.device,
-        )
+        # Deduplicate promotion variants which share a compact policy bucket,
+        # preferring queen promotion for a stable conventional tie-break.
+        legal_by_id = {}
+        for move in legal_moves:
+            move_id = move_to_id(move)
+            existing = legal_by_id.get(move_id)
+            if existing is None or (
+                move.promotion == chess.QUEEN and existing.promotion != chess.QUEEN
+            ):
+                legal_by_id[move_id] = move
+        legal_moves = list(legal_by_id.values())
+        legal_ids = torch.tensor(list(legal_by_id), dtype=torch.long, device=self.device)
 
         if not legal_moves:
             return {
@@ -40,8 +48,10 @@ class TransformerProvider:
             }
 
         with torch.no_grad():
-            embedded = self.model._embed_board(board_tensor)
-            final_stream, activations = self.model.encode_with_intermediates(board_tensor)
+            embedded = self.model._embed_board(board_tensor, state_tensor)
+            final_stream, activations = self.model.encode_with_intermediates(
+                board_tensor, state_tensor
+            )
             streams = [("Input projection", embedded)]
             streams.extend(
                 (f"Encoder {index + 1}", activation)
@@ -67,6 +77,11 @@ class TransformerProvider:
                 for layer in layer_results
             ],
             "top_moves": final["top_moves"],
+            "logic_lens_note": (
+                "Layerwise legal-move score probes. This is an interpretability "
+                "diagnostic, not a human-like chain of thought."
+            ),
+            "geometry_bias": [round(value, 4) for value in self.model.geometry_profile()],
         }
 
     def _project_layer(

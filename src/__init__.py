@@ -2,6 +2,8 @@ from .data_loader import (
     DEFAULT_DATASET_PATH,
     ChessNumpyDataset,
     ChessPGNDataset,
+    board_to_state_features,
+    board_to_state_tensor,
     board_to_sequence,
     build_stockfish_distilled_dataset,
     move_to_id,
@@ -30,6 +32,8 @@ from .tournament import (
 
 __all__ = [
     "board_to_sequence",
+    "board_to_state_features",
+    "board_to_state_tensor",
     "move_to_id",
     "DEFAULT_DATASET_PATH",
     "ChessNumpyDataset",

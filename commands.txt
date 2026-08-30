@@ -1,104 +1,70 @@
-TRANSFORMER CHESS — FRESH INSTALL COMMANDS
-===========================================
+LET'S THINK CHESS — RUNBOOK
+===========================
 
-These commands install the demo, download the checkpoint from Hugging Face,
-and start the local UI. The checkpoint is intentionally not stored in Git.
+COLAB / KAGGLE GPU (one command after cloning)
+-----------------------------------------------
 
+!git clone https://github.com/nareshkarthigeyan/transformer-chess.git
+%cd transformer-chess
+!bash scripts/cloud_train.sh
 
-macOS
------
-
-# Install system tools (Homebrew: https://brew.sh)
-brew install python git stockfish
-
-git clone https://github.com/nareshkarthigeyan/transformer-chess.git
-cd transformer-chess
-
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-
-python -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='nareshkarthigeyan/intuition1', filename='checkpoint.pt', local_dir='.')"
-
-# Open http://127.0.0.1:5001 after this starts.
-python app.py
+The launcher installs Stockfish and Python packages. If data/*.pgn is absent,
+it downloads a bounded public Lichess PGN corpus. It writes best.pt, last.pt,
+epoch snapshots, training.log.txt, JSONL metrics, and a JSON summary.
 
 
-Linux (Ubuntu / Debian)
------------------------
+PERSIST COLAB OUTPUTS ON DRIVE
+------------------------------
 
-sudo apt update
-sudo apt install -y git python3 python3-venv python3-pip stockfish
+!bash scripts/cloud_train.sh \
+  --data-dir /content/drive/MyDrive/chess_pgns \
+  --checkpoint-dir /content/drive/MyDrive/let_think_chess/checkpoints \
+  --log-path /content/drive/MyDrive/let_think_chess/logs/training.log.txt \
+  --metrics-path /content/drive/MyDrive/let_think_chess/logs/training_metrics.jsonl
 
-git clone https://github.com/nareshkarthigeyan/transformer-chess.git
-cd transformer-chess
+
+RESUME AFTER A DISCONNECT
+-------------------------
+
+python run_train.py --preset presentation --resume auto
+
+
+LOCAL INSTALL + TRAIN
+---------------------
 
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
-python -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='nareshkarthigeyan/intuition1', filename='checkpoint.pt', local_dir='.')"
+# macOS
+brew install stockfish
 
-python app.py
-# Open http://127.0.0.1:5001
+# Ubuntu/Debian
+sudo apt-get update && sudo apt-get install -y stockfish
 
-
-Windows (PowerShell)
---------------------
-
-# Install Python and Git. Restart PowerShell after these commands.
-winget install --id Python.Python.3.12 -e
-winget install --id Git.Git -e
-
-# Stockfish is optional for Transformer-only mode. With Chocolatey:
-choco install stockfish -y
-# If Stockfish is installed somewhere else, point the app at the binary:
-$env:STOCKFISH_PATH = "C:\\Program Files\\Stockfish\\stockfish.exe"
-
-git clone https://github.com/nareshkarthigeyan/transformer-chess.git
-cd transformer-chess
-
-py -3 -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-
-python -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='nareshkarthigeyan/intuition1', filename='checkpoint.pt', local_dir='.')"
-
-python app.py
-# Open http://127.0.0.1:5001
+python run_train.py --preset presentation
 
 
-If PowerShell blocks activation
+EVALUATE AND PLAY IN THE WEB UI
 -------------------------------
 
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-.\\.venv\\Scripts\\Activate.ps1
+python evaluate_elo.py --checkpoint checkpoints/best.pt --media
+CHECKPOINT_PATH=checkpoints/best.pt python app.py
+
+Open http://127.0.0.1:5001
 
 
-Optional: train from PGN data
------------------------------
-
-# Put one or more .pgn files inside data/ first.
-python prepare_dataset.py
-python run_train.py
-python app.py
-
-
-Useful checks
--------------
-
-python run_sanity_check.py
-python -c "import torch, chess, flask; print('dependencies ok')"
-curl http://127.0.0.1:5001/healthz
-
-
-Provider controls
+FAST HEALTH CHECK
 -----------------
 
-The UI offers Transformer only, Stockfish only, and Hybrid. Hybrid keeps the
-assist rate between 50% and 70% and shows the provider used on each engine move.
-To force a provider path from a shell, set STOCKFISH_PATH before starting the
-app. The app still works in Transformer-only mode without a Stockfish binary.
+python run_train.py --preset smoke --max-positions 1000
+python run_sanity_check.py
+
+
+IMPORTANT MEASUREMENT NOTE
+--------------------------
+
+Evaluation exports a baseline-relative proxy, not official Elo. Use the
+training logs, match record, fixed Stockfish setting, and live centipawn-loss
+reviews as the presentation evidence. See README.md and CHANGES.md.

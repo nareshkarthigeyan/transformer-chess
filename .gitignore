@@ -53,6 +53,7 @@ outputs/
 results/
 artifacts/
 exports/
+reports/
 
 # Model caches / downloads
 .cache/
