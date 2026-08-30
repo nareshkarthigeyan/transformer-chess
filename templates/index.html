@@ -5,69 +5,91 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Transformer Chess</title>
     <style>
+      :root { color-scheme: dark; --bg: #080d1b; --panel: #10192b; --panel-2: #17243a; --line: #2b3a55; --text: #e6edf7; --muted: #91a0b8; --accent: #57d9c5; --accent-2: #8b7cff; --light-square: #dce8f3; --dark-square: #54718c; }
       * { box-sizing: border-box; }
-      body { margin: 0; padding: 16px; font-family: sans-serif; background: white; }
-      main { max-width: 1100px; margin: 0 auto; }
-      nav { display: flex; align-items: center; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid; margin-bottom: 18px; }
-      nav button { padding: 5px 9px; }
-      nav button.active { font-weight: bold; }
-      #runtimeText { margin-left: auto; font-size: 12px; }
+      body { margin: 0; padding: clamp(14px, 3vw, 34px); font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--text); background: radial-gradient(circle at 15% 0%, #152a47 0, transparent 34%), var(--bg); }
+      main { max-width: 1220px; margin: 0 auto; }
+      nav { display: flex; align-items: center; gap: 8px; padding: 10px 0 18px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+      nav button, button { color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; cursor: pointer; transition: .18s ease; }
+      nav button:hover, button:hover { border-color: var(--accent); transform: translateY(-1px); }
+      nav button.active { color: #06151a; background: var(--accent); border-color: var(--accent); font-weight: 800; }
+      button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+      #runtimeText { margin-left: auto; color: var(--muted); font-size: 12px; }
       .tab-panel { display: none; }
-      .tab-panel.active { display: block; }
-      .play-layout, .architecture-grid, .lens-layout { display: grid; grid-template-columns: minmax(0, 640px) minmax(260px, 1fr); gap: 24px; align-items: start; }
-      .board-topline, .board-foot, .panel-heading, .section-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-      #board { display: grid; grid-template-columns: repeat(8, 1fr); width: min(100%, 640px); border: 1px solid; }
-      .square { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1; padding: 0; border: 1px solid; font-size: clamp(28px, 7vw, 66px); line-height: 1; }
-      .square.selected { outline: 3px solid; outline-offset: -3px; }
-      .square.target::after { content: ""; position: absolute; width: 18%; height: 18%; border: 1px solid; border-radius: 50%; }
-      .square.target.capture::after { width: 76%; height: 76%; background: transparent; }
-      .piece { font-family: "Times New Roman", serif; user-select: none; }
-      .coord { position: absolute; font-size: 10px; pointer-events: none; }
-      .coord.file { right: 3px; bottom: 2px; }
-      .coord.rank { left: 3px; top: 2px; }
-      .panel { border: 1px solid; padding: 12px; }
+      .tab-panel.active { display: block; animation: rise .24s ease-out; }
+      @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+      .play-layout, .architecture-grid, .lens-layout { display: grid; grid-template-columns: minmax(0, 680px) minmax(280px, 1fr); gap: 24px; align-items: start; }
+      .board-topline, .board-foot, .panel-heading, .section-row, .chart-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .board-topline { color: var(--muted); margin: 0 0 10px; }
+      #turnText { color: var(--text); }
+      #modePill { color: #06151a; background: var(--accent); border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+      #modePill.finished { color: #fff; background: #e56b89; }
+      #modePill.check { color: #211602; background: #f6c85f; }
+      #board { display: grid; grid-template-columns: repeat(8, 1fr); width: min(100%, 680px); border: 4px solid #263852; border-radius: 12px; overflow: hidden; box-shadow: 0 22px 50px #0008; }
+      .square { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1; padding: 0; border: 0; border-radius: 0; font-size: clamp(29px, 7vw, 72px); line-height: 1; }
+      .square.light { background: var(--light-square); }
+      .square.dark { background: var(--dark-square); }
+      .square:hover { filter: brightness(1.1); transform: none; }
+      .square.selected { outline: 4px solid var(--accent); outline-offset: -4px; z-index: 2; }
+      .square.last-move { box-shadow: inset 0 0 0 999px #f5d06155; }
+      .square.in-check { box-shadow: inset 0 0 0 999px #e55d6fbb; }
+      .square.target::after { content: ""; position: absolute; width: 18%; height: 18%; background: #12233899; border: 2px solid #fff9; border-radius: 50%; }
+      .square.target.capture::after { width: 78%; height: 78%; background: transparent; border: 5px solid #e55d6fcc; }
+      .piece { font-family: "Times New Roman", serif; user-select: none; filter: drop-shadow(0 2px 1px #0006); }
+      .coord { position: absolute; color: #17314b; font-size: 10px; font-weight: 800; pointer-events: none; }
+      .dark .coord { color: #e5f1fb; }
+      .coord.file { right: 5px; bottom: 3px; }
+      .coord.rank { left: 5px; top: 3px; }
+      .status-banner { display: flex; align-items: center; gap: 10px; min-height: 48px; margin: 12px 0; padding: 11px 14px; color: var(--text); background: #112238; border: 1px solid var(--line); border-radius: 10px; }
+      .status-banner.check { color: #2a1d04; background: #f6c85f; border-color: #f6c85f; }
+      .status-banner.finished { color: #fff; background: linear-gradient(120deg, #a73e68, #60429c); border-color: #da83a3; }
+      .status-icon { font-size: 20px; }
+      .board-foot { color: var(--muted); font-size: 13px; }
+      .panel, fieldset { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: #0f182aee; box-shadow: 0 10px 30px #0002; }
       .panel + .panel { margin-top: 12px; }
-      .panel-heading { margin: -12px -12px 12px; padding: 8px 12px; border-bottom: 1px solid; }
-      fieldset { margin: 0 0 12px; padding: 10px; background: white; }
-      label { display: block; margin: 8px 0 4px; }
+      fieldset { margin: 0 0 12px; }
+      legend { padding: 0 7px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+      label { display: block; margin: 8px 0 4px; color: var(--muted); font-size: 12px; }
       select, input, button { font: inherit; }
-      select { min-width: 140px; padding: 3px; }
-      input[type="range"] { width: min(100%, 300px); }
+      select { width: 100%; min-width: 140px; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; padding: 8px; }
+      input[type="range"] { width: min(100%, 300px); accent-color: var(--accent); }
       .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
       .field.full { grid-column: 1 / -1; }
       .range-line { display: flex; align-items: center; gap: 8px; }
       .range-value { min-width: 38px; }
       .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-      .metric { border: 1px solid; padding: 8px; }
-      .metric label { margin: 0 0 4px; font-size: 12px; }
+      .metric { border: 1px solid var(--line); border-radius: 8px; padding: 9px; background: #142239; }
+      .metric label { margin: 0 0 4px; font-size: 11px; }
       .metric strong { font-size: 18px; }
-      .move-list { max-height: 240px; overflow: auto; }
-      .move-row { display: grid; grid-template-columns: 34px 44px 1fr auto; gap: 8px; padding: 5px 0; border-bottom: 1px solid; }
+      .move-list { max-height: 280px; overflow: auto; }
+      .move-row { display: grid; grid-template-columns: 34px 50px 1fr auto; gap: 8px; padding: 7px 0; color: var(--muted); border-bottom: 1px solid #26364f; font-size: 12px; }
+      .move-row strong, .move-row span:nth-child(2) { color: var(--text); }
       .lens-strip { display: grid; gap: 8px; }
-      .lens-row { display: grid; grid-template-columns: 100px 1fr 54px; gap: 8px; align-items: center; }
-      .lens-bar { height: 8px; border: 1px solid; }
-      .lens-fill { display: block; height: 100%; background: currentColor; }
+      .lens-row { display: grid; grid-template-columns: 100px 1fr 54px; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+      .lens-bar { height: 8px; overflow: hidden; background: #0a1120; border: 1px solid var(--line); border-radius: 999px; }
+      .lens-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); border-radius: inherit; }
       .lens-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-      .lens-card { border: 1px solid; padding: 10px; }
-      .lens-card-head, .top-move { display: flex; justify-content: space-between; gap: 8px; }
-      .lens-card-move { margin: 12px 0; font-size: 24px; font-weight: bold; }
+      .lens-card { border: 1px solid var(--line); border-radius: 9px; padding: 10px; background: #142239; }
+      .lens-card-head, .top-move { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
+      .lens-card-move { margin: 12px 0; color: var(--accent); font-size: 24px; font-weight: bold; }
       .top-move { display: grid; grid-template-columns: 28px 1fr 40px; align-items: center; margin-top: 5px; }
-      .top-move .bar { height: 6px; border: 1px solid; }
-      .top-move .bar i { display: block; height: 100%; background: currentColor; }
-      .fact { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; border-bottom: 1px solid; }
+      .top-move .bar { height: 6px; overflow: hidden; background: #0a1120; border: 1px solid var(--line); border-radius: 999px; }
+      .top-move .bar i { display: block; height: 100%; background: var(--accent-2); }
+      .fact { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; color: var(--muted); border-bottom: 1px solid #26364f; }
+      .fact strong { color: var(--text); text-align: right; }
       .arch-flow { display: grid; gap: 8px; }
-      .arch-node { border: 1px solid; padding: 10px; display: flex; justify-content: space-between; gap: 12px; }
-      .arch-detail { text-align: right; }
-      .empty { padding: 8px 0; }
-      @media (max-width: 800px) {
-        .play-layout, .architecture-grid, .lens-layout { grid-template-columns: 1fr; }
-      }
-      @media (max-width: 520px) {
-        .control-grid, .lens-cards { grid-template-columns: 1fr; }
-        .field.full { grid-column: auto; }
-        nav { flex-wrap: wrap; }
-        #runtimeText { margin-left: 0; width: 100%; }
-      }
+      .arch-node { border: 1px solid var(--line); border-radius: 9px; padding: 12px; background: #142239; display: flex; justify-content: space-between; gap: 12px; }
+      .arch-detail { color: var(--muted); text-align: right; }
+      .chart-shell { position: relative; min-height: 210px; padding: 8px 4px 0; }
+      #eloChart { display: block; width: 100%; height: 190px; }
+      .chart-meta { color: var(--muted); font-size: 12px; }
+      #eloValue { color: var(--accent); font-size: 20px; font-weight: 800; }
+      .chart-note { color: var(--muted); font-size: 11px; line-height: 1.4; }
+      .empty { padding: 8px 0; color: var(--muted); }
+      #toast { position: fixed; right: 18px; bottom: 18px; z-index: 10; max-width: min(380px, calc(100vw - 36px)); padding: 12px 15px; color: #06151a; background: var(--accent); border-radius: 9px; box-shadow: 0 12px 32px #0008; }
+      #toast[hidden] { display: none; }
+      @media (max-width: 800px) { .play-layout, .architecture-grid, .lens-layout { grid-template-columns: 1fr; } }
+      @media (max-width: 520px) { .control-grid, .lens-cards { grid-template-columns: 1fr; } .field.full { grid-column: auto; } nav { flex-wrap: wrap; } #runtimeText { margin-left: 0; width: 100%; } .board-foot { align-items: flex-start; flex-direction: column; } }
     </style>
   </head>
   <body>
@@ -83,13 +105,14 @@
         <div class="play-layout">
           <div>
             <div class="board-topline">
-              <span>Turn: <strong id="turnText">WHITE</strong></span>
+              <span>Turn: <strong id="turnText">WHITE</strong> · <span id="moveCountTop">0 plies</span></span>
               <span id="modePill">READY</span>
             </div>
             <div id="board" aria-label="Chess board"></div>
+            <div id="statusBanner" class="status-banner" role="status"><span id="statusIcon" class="status-icon">♟</span><span id="statusText">Your move. Click a piece, then its destination.</span></div>
             <div class="board-foot">
               <span id="boardMessage">Your move. Click a piece, then its destination.</span>
-              <span><button id="undoButton">Undo</button> <button id="newGameButton">New game</button></span>
+              <span><button id="claimDrawButton" hidden>Claim draw</button> <button id="undoButton">Undo</button> <button id="newGameButton">New game</button></span>
             </div>
           </div>
 
@@ -116,6 +139,13 @@
               <legend>Readout</legend>
               <p>Provider: <strong id="providerBadge">waiting</strong></p>
               <div id="telemetryPanel"><div class="empty">Play a move to inspect the model.</div></div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Live performance</legend>
+              <div class="chart-meta"><span>Move-quality proxy</span><strong id="eloValue">—</strong></div>
+              <div class="chart-shell"><canvas id="eloChart" aria-label="Live move quality proxy chart"></canvas></div>
+              <div class="chart-note">Estimated from Stockfish centipawn loss after your moves. It is a live diagnostic, not an official Elo rating.</div>
             </fieldset>
 
             <fieldset>
@@ -196,8 +226,10 @@
         const legal = state.legal_moves || [];
         $("board").innerHTML = orderedSquares().map((square, index) => {
           const piece = board[square]; const isTarget = selected && legal.some((move) => move.startsWith(selected) && move.slice(2,4) === square); const isCapture = isTarget && !!piece; const isLast = lastSquares.includes(square);
+          const isCheckedKing = Boolean(state.in_check && piece && piece.toLowerCase() === "k" && ((state.turn === "white" && piece === "K") || (state.turn === "black" && piece === "k")));
+          const shade = (Math.floor(index / 8) + index % 8) % 2 === 0 ? "light" : "dark";
           const fileLabel = index >= 56 ? square[0] : ""; const rankLabel = index % 8 === 0 ? square[1] : "";
-          return `<button class="square ${selected === square ? "selected" : ""} ${isTarget ? `target ${isCapture ? "capture" : ""}` : ""} ${isLast ? "last-move" : ""}" data-square="${square}" aria-label="${square}">${piece ? `<span class="piece">${glyphs[piece]}</span>` : ""}<span class="coord file">${fileLabel}</span><span class="coord rank">${rankLabel}</span></button>`;
+          return `<button class="square ${shade} ${selected === square ? "selected" : ""} ${isTarget ? `target ${isCapture ? "capture" : ""}` : ""} ${isLast ? "last-move" : ""} ${isCheckedKing ? "in-check" : ""}" data-square="${square}" aria-label="${square}">${piece ? `<span class="piece">${glyphs[piece]}</span>` : ""}<span class="coord file">${fileLabel}</span><span class="coord rank">${rankLabel}</span></button>`;
         }).join("");
         $("board").querySelectorAll(".square").forEach((square) => square.addEventListener("click", () => clickSquare(square.dataset.square)));
       }
@@ -214,17 +246,22 @@
       }
 
       async function sendMove(uci) {
-        try { const response = await fetch("/api/move", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uci }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Move failed"); state = data; renderAll(); }
+        try { selected = null; renderAll(); const response = await fetch("/api/move", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uci }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Move failed"); state = data; renderAll(); }
         catch (error) { showToast(error.message, true); renderBoard(); }
       }
 
       async function startNewGame() {
-        const provider = $("providerSelect").value; const assist = Number($("assistRange").value); $("newGameButton").disabled = true;
+        const provider = $("providerSelect").value; const assist = Number($("assistRange").value); $("newGameButton").disabled = true; $("statusText").textContent = "Starting a fresh game…";
         try { const response = await fetch("/api/new-game", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ player_color: $("colorSelect").value, provider, assist_rate: assist }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Could not start game"); state = data; selected = null; renderAll(); }
         catch (error) { showToast(error.message, true); } finally { $("newGameButton").disabled = false; }
       }
 
       async function undo() { try { const response = await fetch("/api/undo", { method: "POST" }); state = await response.json(); selected = null; renderAll(); } catch (error) { showToast(error.message, true); } }
+
+      async function claimDraw() {
+        try { const response = await fetch("/api/claim-draw", { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "A draw cannot be claimed here"); state = data; selected = null; renderAll(); showToast("Draw claimed."); }
+        catch (error) { showToast(error.message, true); }
+      }
 
       function renderTelemetry() {
         const telemetry = state?.telemetry; const panel = $("telemetryPanel"); const badge = $("providerBadge");
@@ -249,18 +286,51 @@
 
       function renderHistory() {
         const history = state?.history || []; $("moveCount").textContent = `${history.length} ${history.length === 1 ? "ply" : "plies"}`;
+        $("moveCountTop").textContent = `${history.length} ${history.length === 1 ? "ply" : "plies"}`;
         $("moveList").innerHTML = history.length ? history.map((move) => `<div class="move-row"><span>${String(move.ply).padStart(2, "0")}</span><span>${escapeHtml(move.san)}</span><span>${escapeHtml(move.actor === "you" ? "You" : "Engine")}</span><span>${escapeHtml(move.provider)}</span></div>`).join("") : `<div class="empty">No moves yet.</div>`;
       }
 
+      function renderStatus() {
+        const banner = $("statusBanner"); const icon = $("statusIcon"); const text = $("statusText"); const pill = $("modePill");
+        banner.classList.remove("check", "finished"); pill.classList.remove("check", "finished");
+        if (state.status === "finished") {
+          banner.classList.add("finished"); pill.classList.add("finished"); icon.textContent = state.game_over_reason?.startsWith("Checkmate") ? "♛" : "½"; text.textContent = state.game_over_reason || state.message;
+        } else if (state.in_check) {
+          banner.classList.add("check"); pill.classList.add("check"); icon.textContent = "⚠"; text.textContent = `Check — ${state.message}`;
+        } else if (state.claimable_draw) {
+          banner.classList.add("check"); pill.classList.add("check"); icon.textContent = "½"; text.textContent = `${state.message} (${state.claimable_draw_reason})`;
+        } else {
+          icon.textContent = "♟"; text.textContent = state.message;
+        }
+        $("claimDrawButton").hidden = !state.claimable_draw || state.status === "finished";
+        $("undoButton").disabled = !(state.history?.length);
+      }
+
+      function drawEloChart() {
+        const canvas = $("eloChart"); if (!canvas) return;
+        const rect = canvas.getBoundingClientRect(); const width = Math.max(280, Math.floor(rect.width || 420)); const height = 190; const ratio = window.devicePixelRatio || 1;
+        canvas.width = width * ratio; canvas.height = height * ratio; const ctx = canvas.getContext("2d"); ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.clearRect(0, 0, width, height); const pad = { left: 38, right: 12, top: 12, bottom: 26 }; const plotW = width - pad.left - pad.right; const plotH = height - pad.top - pad.bottom; const minElo = 400; const maxElo = 2200;
+        ctx.font = "11px Inter, system-ui, sans-serif"; ctx.lineWidth = 1; ctx.strokeStyle = "#2b3a55"; ctx.fillStyle = "#91a0b8";
+        [400, 800, 1200, 1600, 2000].forEach((value) => { const y = pad.top + plotH * (1 - ((value - minElo) / (maxElo - minElo))); ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke(); ctx.fillText(String(value), 2, y + 4); });
+        const points = (state?.elo_history || []).filter((point) => Number.isFinite(Number(point.quality_elo)));
+        if (!points.length) { ctx.fillStyle = "#91a0b8"; ctx.fillText("Make a move with Stockfish review enabled", pad.left + 8, pad.top + plotH / 2); $("eloValue").textContent = "—"; return; }
+        const xFor = (index) => pad.left + (points.length === 1 ? plotW / 2 : (index / (points.length - 1)) * plotW); const yFor = (value) => pad.top + plotH * (1 - ((value - minElo) / (maxElo - minElo)));
+        const gradient = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH); gradient.addColorStop(0, "#57d9c555"); gradient.addColorStop(1, "#57d9c500"); ctx.beginPath(); ctx.moveTo(xFor(0), yFor(points[0].quality_elo)); points.forEach((point, index) => ctx.lineTo(xFor(index), yFor(point.quality_elo))); ctx.lineTo(xFor(points.length - 1), pad.top + plotH); ctx.lineTo(xFor(0), pad.top + plotH); ctx.closePath(); ctx.fillStyle = gradient; ctx.fill();
+        ctx.beginPath(); points.forEach((point, index) => index ? ctx.lineTo(xFor(index), yFor(point.quality_elo)) : ctx.moveTo(xFor(index), yFor(point.quality_elo))); ctx.strokeStyle = "#57d9c5"; ctx.lineWidth = 2.5; ctx.stroke();
+        points.forEach((point, index) => { ctx.beginPath(); ctx.arc(xFor(index), yFor(point.quality_elo), 3.5, 0, Math.PI * 2); ctx.fillStyle = "#57d9c5"; ctx.fill(); ctx.strokeStyle = "#08101f"; ctx.lineWidth = 1.5; ctx.stroke(); });
+        $("eloValue").textContent = `${points.at(-1).quality_elo} proxy`;
+      }
+
       function renderAll() {
-        renderBoard(); renderTelemetry(); renderHistory();
+        renderBoard(); renderTelemetry(); renderHistory(); renderStatus(); drawEloChart();
         $("turnText").textContent = state.turn.toUpperCase(); $("boardMessage").textContent = state.message; $("modePill").textContent = state.status.toUpperCase(); $("providerSelect").value = state.provider; $("colorSelect").value = state.player_color; $("assistRange").value = state.assist_rate; $("runtimeText").textContent = `${state.model_ready ? "checkpoint loaded" : "checkpoint missing"} · ${state.model_device}`;
       }
 
       async function loadArchitecture() { try { const data = await (await fetch("/api/architecture")).json(); $("archParams").textContent = `${(data.parameters / 1000000).toFixed(2)}M`; $("archTokens").textContent = data.tokens; $("archWidth").textContent = data.d_model; $("archPolicyFact").textContent = Number(data.policy_outputs).toLocaleString(); $("archDevice").textContent = data.device; $("archCheckpoint").textContent = data.checkpoint_loaded ? "loaded" : "not found"; $("archGeoBias").textContent = Number(data.geometric_attention_bias?.[1] ?? 0).toFixed(3); $("archLayers").textContent = data.layers; $("archHeads").textContent = data.heads; $("archPolicy").textContent = Number(data.policy_outputs).toLocaleString(); } catch (_) {} }
 
       document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => { document.querySelectorAll(".tab-button").forEach((item) => item.classList.remove("active")); document.querySelectorAll(".tab-panel").forEach((item) => item.classList.remove("active")); button.classList.add("active"); $(`tab-${button.dataset.tab}`).classList.add("active"); if (button.dataset.tab === "architecture") loadArchitecture(); }));
-      $("newGameButton").addEventListener("click", startNewGame); $("undoButton").addEventListener("click", undo);
+      $("newGameButton").addEventListener("click", startNewGame); $("undoButton").addEventListener("click", undo); $("claimDrawButton").addEventListener("click", claimDraw); window.addEventListener("resize", drawEloChart);
       (async function init() { try { const response = await fetch("/api/state"); state = await response.json(); renderAll(); loadArchitecture(); } catch (error) { showToast("Could not connect to the Flask server.", true); } })();
     </script>
   </body>

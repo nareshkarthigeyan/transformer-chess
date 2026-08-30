@@ -1,4 +1,5 @@
 import atexit
+import math
 import os
 import random
 from copy import deepcopy
@@ -78,7 +79,12 @@ def _new_game_state(player_color="white", provider="hybrid", assist_rate=0.6):
         "assist_rate": assist_rate,
         "status": "ready",
         "result": None,
+        "game_over_reason": None,
+        "claimable_draw": False,
+        "claimable_draw_reason": None,
+        "in_check": False,
         "history": [],
+        "elo_history": [],
         "telemetry": None,
         "message": "Your move. Click a piece, then its destination.",
     }
@@ -194,15 +200,67 @@ def _record_move(move, san, actor, provider):
     )
 
 
+def _forced_game_over():
+    """Return true only for endings that cannot be continued legally.
+
+    python-chess also treats a claimable threefold/50-move draw as game-over
+    by default.  For the browser playground we let users continue and expose
+    an explicit claim-draw action instead.
+    """
+    return board.is_game_over(claim_draw=False)
+
+
+def _game_over_reason():
+    if board.is_checkmate():
+        winner = "White" if board.turn == chess.BLACK else "Black"
+        return f"Checkmate — {winner} wins"
+    if board.is_stalemate():
+        return "Stalemate — draw"
+    if board.is_insufficient_material():
+        return "Draw — insufficient material"
+    if board.is_seventyfive_moves():
+        return "Draw — 75-move rule"
+    if board.is_fivefold_repetition():
+        return "Draw — fivefold repetition"
+    return f"Game over — {board.result(claim_draw=False)}"
+
+
+def _claimable_draw_reason():
+    if board.can_claim_fifty_moves():
+        return "50-move draw can be claimed"
+    if board.can_claim_threefold_repetition():
+        return "Threefold-repetition draw can be claimed"
+    return None
+
+
+def _quality_elo(review):
+    """Convert local Stockfish centipawn loss into a clearly-labeled proxy."""
+    if not review or not review.get("available"):
+        return None
+    loss = max(0.0, float(review.get("centipawn_loss", 0.0)))
+    estimate = 2100.0 - (260.0 * math.log1p(loss / 25.0))
+    return int(round(max(400.0, min(2200.0, estimate))))
+
+
 def _finish_or_refresh(message=None):
     game_state["fen"] = board.fen()
     game_state["turn"] = "white" if board.turn == chess.WHITE else "black"
-    if board.is_game_over():
+    game_state["in_check"] = board.is_check()
+    game_state["claimable_draw_reason"] = _claimable_draw_reason()
+    game_state["claimable_draw"] = bool(game_state["claimable_draw_reason"])
+    if _forced_game_over():
         game_state["status"] = "finished"
         game_state["result"] = board.result()
-        game_state["message"] = message or f"Game over · {board.result()}"
+        game_state["game_over_reason"] = _game_over_reason()
+        game_state["message"] = game_state["game_over_reason"]
     else:
         game_state["status"] = "playing"
+        game_state["result"] = None
+        game_state["game_over_reason"] = None
+        if game_state["claimable_draw"]:
+            message = message or (
+                "Draw claim available · play can continue, or claim the draw."
+            )
         game_state["message"] = message or (
             "Your move. Click a piece, then its destination."
             if game_state["turn"] == game_state["player_color"]
@@ -372,6 +430,7 @@ def api_new_game():
     with game_lock:
         board = chess.Board()
         game_state = _new_game_state(player_color, provider, assist_rate)
+        _finish_or_refresh()
         if player_color == "black":
             _engine_turn()
         return jsonify(_state_payload())
@@ -401,14 +460,26 @@ def api_move():
             except (chess.engine.EngineError, OSError, KeyError) as exc:
                 move_review = {"available": False, "warning": str(exc)}
         board.push(move)
+        user_ply = len(board.move_stack)
         _record_move(move, san, "you", "You")
         _finish_or_refresh(f"You played {san}.")
         if move_review:
             game_state["telemetry"] = {"stockfish_review": move_review}
-        if not board.is_game_over() and game_state["turn"] != game_state["player_color"]:
+        if game_state["status"] != "finished" and game_state["turn"] != game_state["player_color"]:
             _engine_turn()
             if move_review:
                 game_state["telemetry"]["stockfish_review"] = move_review
+        quality_elo = _quality_elo(move_review)
+        if quality_elo is not None:
+            game_state["elo_history"].append(
+                {
+                    "ply": user_ply,
+                    "move": san,
+                    "quality_elo": quality_elo,
+                    "centipawn_loss": move_review.get("centipawn_loss"),
+                    "quality": move_review.get("quality"),
+                }
+            )
         return jsonify(_state_payload())
 
 
@@ -422,8 +493,27 @@ def api_undo():
         if board.move_stack and game_state["history"]:
             board.pop()
         game_state["history"] = game_state["history"][:-2] if len(game_state["history"]) >= 2 else []
+        current_ply = len(board.move_stack)
+        game_state["elo_history"] = [
+            point for point in game_state["elo_history"] if point.get("ply", 0) <= current_ply
+        ]
         game_state["telemetry"] = None
         _finish_or_refresh("Undid the last turn.")
+        return jsonify(_state_payload())
+
+
+@app.route("/api/claim-draw", methods=["POST"])
+def api_claim_draw():
+    with game_lock:
+        reason = _claimable_draw_reason()
+        if not reason:
+            return jsonify({"error": "A draw cannot be claimed in this position."}), 400
+        game_state["status"] = "finished"
+        game_state["result"] = "1/2-1/2"
+        game_state["game_over_reason"] = f"Draw claimed — {reason.removesuffix(' can be claimed')}"
+        game_state["claimable_draw"] = False
+        game_state["claimable_draw_reason"] = None
+        game_state["message"] = game_state["game_over_reason"]
         return jsonify(_state_payload())
 
 

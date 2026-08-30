@@ -1,5 +1,16 @@
 # End-to-end presentation upgrade
 
+## Interactive presentation polish
+
+- Added a dark, color-coded browser layout with clearer board coordinates,
+  selected/last-move/check highlights, and responsive panels.
+- Interactive games now continue through claimable threefold/50-move draws;
+  forced checkmate, stalemate, insufficient-material, 75-move, and fivefold
+  endings are explained directly in the UI. Users can claim a draw explicitly.
+- Added a live move-quality proxy chart based on Stockfish centipawn loss,
+  with the non-official-Elo disclaimer shown beside the chart.
+- Undo now keeps the move-quality chart synchronized with the board history.
+
 ## Added
 
 - Diverse five-player Lichess bootstrap (up to 5,000 games), one PGN per
