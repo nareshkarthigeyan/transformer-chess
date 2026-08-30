@@ -1,4 +1,5 @@
 # src/evaluate.py
+import chess
 import torch
 import torch.nn.functional as F
 from .data_loader import board_to_sequence, board_to_state_tensor
