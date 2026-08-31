@@ -171,7 +171,10 @@ def _fallback_analysis(current_board):
         "layers": layers,
         "top_moves": layers[-1]["top_moves"],
         "fallback": True,
-        "logic_lens_note": "No checkpoint is loaded, so the Logic Lens has no learned representation to probe.",
+        "logic_lens_note": (
+            "No checkpoint is loaded, so the Logic Lens uses a legal-move "
+            "fallback with four displayed candidates per layer."
+        ),
     }
 
 

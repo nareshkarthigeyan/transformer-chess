@@ -76,9 +76,12 @@
       .lens-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); border-radius: inherit; }
       .lens-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
       .lens-card { border: 1px solid var(--line); border-radius: 9px; padding: 10px; background: #142239; }
-      .lens-card-head, .top-move { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
-      .lens-card-move { margin: 12px 0; color: var(--accent); font-size: 24px; font-weight: bold; }
-      .top-move { display: grid; grid-template-columns: 28px 1fr 40px; align-items: center; margin-top: 5px; }
+      .lens-card-head { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
+      .lens-card-head > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .top-move { display: grid; grid-template-columns: 22px 48px minmax(0, 1fr) 40px; align-items: center; gap: 8px; margin-top: 5px; color: var(--muted); font-size: 12px; }
+      .top-move .candidate { color: var(--text); font-weight: 700; }
+      .top-move > span { min-width: 0; white-space: nowrap; }
+      .lens-card-move { margin: 12px 0; color: var(--accent); font-size: 24px; font-weight: bold; white-space: nowrap; }
       .top-move .bar { height: 6px; overflow: hidden; background: #0a1120; border: 1px solid var(--line); border-radius: 999px; }
       .top-move .bar i { display: block; height: 100%; background: var(--accent-2); }
       .fact { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; color: var(--muted); border-bottom: 1px solid #26364f; }
@@ -92,6 +95,9 @@
       .mini-lens-row strong { color: var(--accent); font-size: 13px; }
       .mini-lens-bar { grid-column: 1 / -1; height: 5px; overflow: hidden; margin-top: -4px; background: #0a1120; border-radius: 999px; }
       .mini-lens-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); border-radius: inherit; }
+      .mini-lens-options { display: flex; flex-wrap: wrap; gap: 5px 8px; margin: -2px 0 4px 0; padding-left: 2px; color: var(--muted); font-size: 11px; }
+      .mini-lens-options span { padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; background: #101c31; white-space: nowrap; }
+      .mini-lens-options em { color: var(--accent); font-style: normal; }
       .chart-shell { position: relative; min-height: 210px; padding: 8px 4px 0; }
       #eloChart { display: block; width: 100%; height: 190px; }
       .chart-meta { color: var(--muted); font-size: 12px; }
@@ -211,7 +217,7 @@
           </fieldset>
           <fieldset>
             <legend>Probe</legend>
-            <p>The policy head is applied to each encoder stream and masked to legal moves. It visualizes evolving scores, not human-like chain-of-thought.</p>
+            <p>The policy head is applied to each encoder stream and masked to legal moves. Each layer shows its top four candidates and their probabilities. This visualizes evolving scores, not human-like chain-of-thought.</p>
             <div class="lens-strip" id="lensStrip"><div class="empty">No lens data yet.</div></div>
           </fieldset>
         </div>
@@ -316,14 +322,14 @@
         const mini = $("miniLens");
         if (!telemetry || !telemetry.layers?.length) { mini.innerHTML = `<div class="mini-lens-title"><span>Mini Logic Lens</span><span>waiting</span></div><div class="empty">Appears after an engine move.</div>`; return; }
         const layers = telemetry.layers.slice(0, 5);
-        mini.innerHTML = `<div class="mini-lens-title"><span>Mini Logic Lens</span><span>${escapeHtml(telemetry.played?.san || "current position")}</span></div>${layers.map((layer) => { const confidence = Math.max(0, Math.min(1, Number(layer.confidence || 0))); return `<div class="mini-lens-row"><span>${escapeHtml(layer.name)}</span><strong>${escapeHtml(layer.san || "—")}</strong><span>${Math.round(confidence * 100)}%</span><span class="mini-lens-bar"><i style="width:${Math.max(3, confidence * 100)}%"></i></span></div>`; }).join("")}`;
+        mini.innerHTML = `<div class="mini-lens-title"><span>Mini Logic Lens · top 4</span><span>${escapeHtml(telemetry.played?.san || "current position")}</span></div>${layers.map((layer) => { const top = (layer.top_moves || []).slice(0, 4); const confidence = Math.max(0, Math.min(1, Number(layer.confidence || 0))); return `<div class="mini-lens-row"><span>${escapeHtml(layer.name)}</span><strong>${escapeHtml(layer.san || "—")}</strong><span>${Math.round(confidence * 100)}%</span><span class="mini-lens-bar"><i style="width:${Math.max(3, confidence * 100)}%"></i></span></div><div class="mini-lens-options">${top.map((move, rank) => `<span title="${escapeHtml(move.uci || "")}">${rank + 1}. ${escapeHtml(move.san || "—")} <em>${Math.round(Number(move.probability || 0) * 100)}%</em></span>`).join("")}</div>`; }).join("")}`;
       }
 
       function renderLens(telemetry) {
         const cards = $("lensCards"); const strip = $("lensStrip");
         if (!telemetry || !telemetry.layers?.length) { cards.innerHTML = `<div class="empty">Play a move to populate the lens.</div>`; strip.innerHTML = `<div class="empty">No lens data yet.</div>`; $("lensPosition").textContent = "waiting for a position"; return; }
         $("lensPosition").textContent = telemetry.played ? `after ${telemetry.played.san}` : "current position";
-        cards.innerHTML = telemetry.layers.map((layer, index) => { const top = layer.top_moves || []; return `<article class="lens-card"><div class="lens-card-head"><span>${escapeHtml(layer.name)}</span><span>${Math.round(Number(layer.confidence || 0) * 100)}%</span></div><div class="lens-card-move">${escapeHtml(layer.san || "—")}</div><div>${top.map((move, rank) => `<div class="top-move"><span>${rank + 1}</span><span class="bar"><i style="width:${Math.max(3, Number(move.probability || 0) * 100)}%"></i></span><span>${Math.round(Number(move.probability || 0) * 100)}%</span></div>`).join("")}</div></article>`; }).join("");
+        cards.innerHTML = telemetry.layers.map((layer) => { const top = (layer.top_moves || []).slice(0, 4); const confidence = Math.round(Number(layer.confidence || 0) * 100); return `<article class="lens-card"><div class="lens-card-head"><span>${escapeHtml(layer.name)}</span><span>top ${top.length} · ${confidence}%</span></div><div class="lens-card-move">${escapeHtml(layer.san || "—")}</div><div>${top.map((move, rank) => `<div class="top-move"><span>${rank + 1}</span><span class="candidate" title="${escapeHtml(move.uci || "")}">${escapeHtml(move.san || "—")}</span><span class="bar"><i style="width:${Math.max(3, Number(move.probability || 0) * 100)}%"></i></span><span>${Math.round(Number(move.probability || 0) * 100)}%</span></div>`).join("")}</div></article>`; }).join("");
         strip.innerHTML = telemetry.layers.map((layer) => `<div class="lens-row"><span>${escapeHtml(layer.name)}</span><span class="lens-bar"><span class="lens-fill" style="width:${Math.max(4, Number(layer.confidence || 0) * 100)}%"></span></span><span>${escapeHtml(layer.san || "—")}</span></div>`).join("");
       }
 

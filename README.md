@@ -158,7 +158,8 @@ Run `CHECKPOINT_PATH=checkpoints/best.pt python app.py` and open the three tabs:
 - **Architecture:** model size, device, checkpoint state, and learned geometry
   bias.
 - **Logit lens:** how top legal move scores shift from input projection through
-  every encoder layer.
+  every encoder layer, including the top four legal candidates and their
+  probabilities at each layer.
 
 After a human move, the interface requests a fixed-depth live Stockfish review:
 best move, centipawn loss, quality label, and an explicitly heuristic quality

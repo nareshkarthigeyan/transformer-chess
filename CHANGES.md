@@ -10,6 +10,9 @@
 - Added a mid-game switch-side control that preserves the board and lets the
   engine make the intervening move when needed.
 - Added a compact in-game Logic Lens alongside the full Lens tab.
+- Logic Lens cards now label and display the top four legal move candidates
+  with their probabilities at every transformer layer; the compact in-game
+  lens shows the same four-way shortlist.
 - Added an automatic root-level `processed_dataset.sql` snapshot. It is a
   bounded, SQLite-compatible preview of processed FENs, board/state features,
   legal-move masks, and Stockfish teacher policy rows generated immediately

@@ -12,7 +12,7 @@ def _move_label(board: chess.Board, move: chess.Move) -> dict:
 
 
 class TransformerProvider:
-    """Inference plus a compact, real logit-lens readout for each encoder layer."""
+    """Inference plus a legal top-four logit-lens readout for each layer."""
 
     name = "transformer"
 
@@ -78,8 +78,9 @@ class TransformerProvider:
             ],
             "top_moves": final["top_moves"],
             "logic_lens_note": (
-                "Layerwise legal-move score probes. This is an interpretability "
-                "diagnostic, not a human-like chain of thought."
+                "Layerwise legal-move score probes with the top four candidates "
+                "per layer. This is an interpretability diagnostic, not a "
+                "human-like chain of thought."
             ),
             "geometry_bias": [round(value, 4) for value in self.model.geometry_profile()],
         }
