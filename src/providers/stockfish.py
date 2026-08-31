@@ -1,3 +1,4 @@
+import math
 import os
 import shutil
 from typing import Optional
@@ -124,6 +125,43 @@ class StockfishProvider:
             "quality": self._quality_band(centipawn_loss),
             "heuristic_band": self._heuristic_band(centipawn_loss),
             "note": "Heuristic move-quality band; it is not an official player Elo estimate.",
+        }
+
+    def evaluate_position(self, board: chess.Board, depth: Optional[int] = None) -> dict:
+        """Return a live side-to-side evaluation for the current position.
+
+        Scores are reported from White's perspective in centipawns.  Mate
+        scores are kept separately so the UI can display ``#N`` instead of
+        pretending a forced mate is an ordinary numeric advantage.
+        """
+        self.start()
+        search_depth = depth if depth is not None else self.depth
+        info = self.engine.analyse(board, chess.engine.Limit(depth=search_depth), multipv=1)
+        if isinstance(info, list):
+            info = info[0]
+        score = info.get("score")
+        white_score = score.pov(chess.WHITE) if score is not None else None
+        mate = white_score.mate() if white_score is not None else None
+        centipawns = int(white_score.score(mate_score=10_000) or 0) if white_score is not None else 0
+        if mate is not None:
+            white_wins = board.turn == chess.BLACK if mate == 0 and board.is_checkmate() else mate > 0
+            white_win_probability = 0.999 if white_wins else 0.001
+            display = f"#{abs(mate)}" if white_wins else f"-#{abs(mate)}"
+        else:
+            # Smoothly maps a centipawn score to a presentation-only chance
+            # bar. This is not a win probability calibrated for tournament
+            # play; it simply mirrors the side-to-side advantage visualization.
+            white_win_probability = 1.0 / (1.0 + math.exp(-centipawns / 400.0))
+            white_win_probability = min(0.999, max(0.001, white_win_probability))
+            display = f"{centipawns / 100:+.2f}"
+        return {
+            "available": True,
+            "depth": search_depth,
+            "centipawns": centipawns,
+            "mate": mate,
+            "display": display,
+            "white_win_probability": round(white_win_probability, 4),
+            "side_to_move": "white" if board.turn == chess.WHITE else "black",
         }
 
     @staticmethod

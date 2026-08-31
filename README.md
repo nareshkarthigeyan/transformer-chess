@@ -154,7 +154,7 @@ research-grade next revision should use a full promotion-aware action space.
 Run `CHECKPOINT_PATH=checkpoints/best.pt python app.py` and open the three tabs:
 
 - **Play:** legality-checked browser chess board, transformer/Stockfish/hybrid
-  routing, confidence, value, and entropy.
+  routing, confidence, value, entropy, and a live Stockfish advantage bar.
 - **Architecture:** model size, device, checkpoint state, and learned geometry
   bias.
 - **Logit lens:** how top legal move scores shift from input projection through
@@ -162,8 +162,10 @@ Run `CHECKPOINT_PATH=checkpoints/best.pt python app.py` and open the three tabs:
 
 After a human move, the interface requests a fixed-depth live Stockfish review:
 best move, centipawn loss, quality label, and an explicitly heuristic quality
-band. A single move does not determine a player's Elo, so the UI never claims
-that it does.
+band. The adjacent evaluation bar and graph re-analyse the resulting position
+with Stockfish and show its white-perspective score (or mate). The displayed
+percentages are a presentation aid, not calibrated win odds; a single move
+does not determine a player's Elo, so the UI never claims that it does.
 
 ## Common commands
 

@@ -19,8 +19,11 @@
 - Interactive games now continue through claimable threefold/50-move draws;
   forced checkmate, stalemate, insufficient-material, 75-move, and fivefold
   endings are explained directly in the UI. Users can claim a draw explicitly.
-- Added a live move-quality proxy chart based on Stockfish centipawn loss,
-  with the non-official-Elo disclaimer shown beside the chart.
+- Added Stockfish centipawn-loss move review with an explicitly non-official
+  quality-band diagnostic.
+- Added a live chess.com-style Stockfish position evaluation bar. It reports
+  the current white-perspective score (including mate), shows a side-to-side
+  advantage percentage, and plots centipawn evaluation after every position.
 - Undo now keeps the move-quality chart synchronized with the board history.
 
 ## Added

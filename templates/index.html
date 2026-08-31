@@ -95,8 +95,14 @@
       .chart-shell { position: relative; min-height: 210px; padding: 8px 4px 0; }
       #eloChart { display: block; width: 100%; height: 190px; }
       .chart-meta { color: var(--muted); font-size: 12px; }
-      #eloValue { color: var(--accent); font-size: 20px; font-weight: 800; }
       .chart-note { color: var(--muted); font-size: 11px; line-height: 1.4; }
+      .eval-header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; color: var(--muted); font-size: 12px; }
+      #stockfishEvalValue { color: var(--accent); font-size: 22px; font-weight: 850; }
+      .eval-bar { display: flex; width: 100%; height: 18px; overflow: hidden; margin: 10px 0 6px; background: #27354e; border: 1px solid var(--line); border-radius: 999px; box-shadow: inset 0 1px 2px #0006; }
+      #whiteEvalSegment { display: block; width: 50%; background: linear-gradient(90deg, #ffffff, #b9c9d8); transition: width .35s ease; }
+      #blackEvalSegment { display: block; flex: 1; min-width: 0; background: linear-gradient(90deg, #2d3d57, #111a2b); }
+      .eval-legend { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+      .eval-legend strong { color: var(--text); }
       .empty { padding: 8px 0; color: var(--muted); }
       #toast { position: fixed; right: 18px; bottom: 18px; z-index: 10; max-width: min(380px, calc(100vw - 36px)); padding: 12px 15px; color: #06151a; background: var(--accent); border-radius: 9px; box-shadow: 0 12px 32px #0008; }
       #toast[hidden] { display: none; }
@@ -157,10 +163,13 @@
             </fieldset>
 
             <fieldset>
-              <legend>Live performance</legend>
-              <div class="chart-meta"><span>Move-quality proxy</span><strong id="eloValue">—</strong></div>
-              <div class="chart-shell"><canvas id="eloChart" aria-label="Live move quality proxy chart"></canvas></div>
-              <div class="chart-note">Estimated from Stockfish centipawn loss after your moves. It is a live diagnostic, not an official Elo rating.</div>
+              <legend>Live Stockfish evaluation</legend>
+              <div class="eval-header"><span id="stockfishEvalLabel">White / Black edge</span><strong id="stockfishEvalValue">—</strong></div>
+              <div class="eval-bar" role="img" aria-label="Stockfish evaluation bar"><span id="whiteEvalSegment"></span><span id="blackEvalSegment"></span></div>
+              <div class="eval-legend"><span>White <strong id="whiteEvalPercent">50%</strong></span><span>Black <strong id="blackEvalPercent">50%</strong></span></div>
+              <div class="chart-meta"><span>Position score over time · depth <span id="evalDepth">—</span></span></div>
+              <div class="chart-shell"><canvas id="eloChart" aria-label="Live Stockfish position evaluation chart"></canvas></div>
+              <div class="chart-note">The bar and graph are evaluated from the current board by Stockfish. Percentages are a presentation aid, not calibrated win odds or official Elo.</div>
             </fieldset>
 
             <fieldset>
@@ -342,24 +351,32 @@
         $("switchColorButton").textContent = `Switch to ${state.player_color === "white" ? "Black" : "White"}`;
       }
 
-      function drawEloChart() {
+      function renderStockfishEval() {
+        const evaluation = state?.stockfish_eval; const whiteSegment = $("whiteEvalSegment"); const blackSegment = $("blackEvalSegment");
+        if (!evaluation?.available) {
+          whiteSegment.style.width = "50%"; $("whiteEvalPercent").textContent = "50%"; $("blackEvalPercent").textContent = "50%"; $("stockfishEvalValue").textContent = "—"; $("stockfishEvalLabel").textContent = "Stockfish unavailable"; $("evalDepth").textContent = "—"; return;
+        }
+        const probability = Math.max(0.001, Math.min(0.999, Number(evaluation.white_win_probability ?? 0.5))); const whitePercent = Math.round(probability * 100); const blackPercent = 100 - whitePercent;
+        whiteSegment.style.width = `${whitePercent}%`; $("whiteEvalPercent").textContent = `${whitePercent}%`; $("blackEvalPercent").textContent = `${blackPercent}%`; $("stockfishEvalValue").textContent = evaluation.display || "0.00"; $("stockfishEvalLabel").textContent = `White / Black edge · ${evaluation.side_to_move} to move`; $("evalDepth").textContent = evaluation.depth ?? "—";
+      }
+
+      function drawEvaluationChart() {
         const canvas = $("eloChart"); if (!canvas) return;
         const rect = canvas.getBoundingClientRect(); const width = Math.max(280, Math.floor(rect.width || 420)); const height = 190; const ratio = window.devicePixelRatio || 1;
         canvas.width = width * ratio; canvas.height = height * ratio; const ctx = canvas.getContext("2d"); ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-        ctx.clearRect(0, 0, width, height); const pad = { left: 38, right: 12, top: 12, bottom: 26 }; const plotW = width - pad.left - pad.right; const plotH = height - pad.top - pad.bottom; const minElo = 400; const maxElo = 2200;
+        ctx.clearRect(0, 0, width, height); const pad = { left: 38, right: 12, top: 12, bottom: 26 }; const plotW = width - pad.left - pad.right; const plotH = height - pad.top - pad.bottom; const minScore = -1000; const maxScore = 1000;
         ctx.font = "11px Inter, system-ui, sans-serif"; ctx.lineWidth = 1; ctx.strokeStyle = "#2b3a55"; ctx.fillStyle = "#91a0b8";
-        [400, 800, 1200, 1600, 2000].forEach((value) => { const y = pad.top + plotH * (1 - ((value - minElo) / (maxElo - minElo))); ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke(); ctx.fillText(String(value), 2, y + 4); });
-        const points = (state?.elo_history || []).filter((point) => Number.isFinite(Number(point.quality_elo)));
-        if (!points.length) { ctx.fillStyle = "#91a0b8"; ctx.fillText("Make a move with Stockfish review enabled", pad.left + 8, pad.top + plotH / 2); $("eloValue").textContent = "—"; return; }
-        const xFor = (index) => pad.left + (points.length === 1 ? plotW / 2 : (index / (points.length - 1)) * plotW); const yFor = (value) => pad.top + plotH * (1 - ((value - minElo) / (maxElo - minElo)));
-        const gradient = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH); gradient.addColorStop(0, "#57d9c555"); gradient.addColorStop(1, "#57d9c500"); ctx.beginPath(); ctx.moveTo(xFor(0), yFor(points[0].quality_elo)); points.forEach((point, index) => ctx.lineTo(xFor(index), yFor(point.quality_elo))); ctx.lineTo(xFor(points.length - 1), pad.top + plotH); ctx.lineTo(xFor(0), pad.top + plotH); ctx.closePath(); ctx.fillStyle = gradient; ctx.fill();
-        ctx.beginPath(); points.forEach((point, index) => index ? ctx.lineTo(xFor(index), yFor(point.quality_elo)) : ctx.moveTo(xFor(index), yFor(point.quality_elo))); ctx.strokeStyle = "#57d9c5"; ctx.lineWidth = 2.5; ctx.stroke();
-        points.forEach((point, index) => { ctx.beginPath(); ctx.arc(xFor(index), yFor(point.quality_elo), 3.5, 0, Math.PI * 2); ctx.fillStyle = "#57d9c5"; ctx.fill(); ctx.strokeStyle = "#08101f"; ctx.lineWidth = 1.5; ctx.stroke(); });
-        $("eloValue").textContent = `${points.at(-1).quality_elo} proxy`;
+        [1000, 500, 0, -500, -1000].forEach((value) => { const y = pad.top + plotH * (1 - ((value - minScore) / (maxScore - minScore))); ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.strokeStyle = value === 0 ? "#53627b" : "#2b3a55"; ctx.stroke(); ctx.fillStyle = "#91a0b8"; ctx.fillText(value > 0 ? `+${value}` : String(value), 2, y + 4); });
+        const points = (state?.evaluation_history || []).filter((point) => Number.isFinite(Number(point.centipawns)));
+        if (!points.length) { ctx.fillStyle = "#91a0b8"; ctx.fillText("Awaiting Stockfish evaluation", pad.left + 8, pad.top + plotH / 2); return; }
+        const scoreFor = (point) => Math.max(minScore, Math.min(maxScore, Number(point.centipawns || 0))); const xFor = (index) => pad.left + (points.length === 1 ? plotW / 2 : (index / (points.length - 1)) * plotW); const yFor = (value) => pad.top + plotH * (1 - ((value - minScore) / (maxScore - minScore)));
+        const gradient = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH); gradient.addColorStop(0, "#57d9c555"); gradient.addColorStop(1, "#57d9c500"); ctx.beginPath(); ctx.moveTo(xFor(0), yFor(scoreFor(points[0]))); points.forEach((point, index) => ctx.lineTo(xFor(index), yFor(scoreFor(point)))); ctx.lineTo(xFor(points.length - 1), pad.top + plotH); ctx.lineTo(xFor(0), pad.top + plotH); ctx.closePath(); ctx.fillStyle = gradient; ctx.fill();
+        ctx.beginPath(); points.forEach((point, index) => index ? ctx.lineTo(xFor(index), yFor(scoreFor(point))) : ctx.moveTo(xFor(index), yFor(scoreFor(point)))); ctx.strokeStyle = "#57d9c5"; ctx.lineWidth = 2.5; ctx.stroke();
+        points.forEach((point, index) => { ctx.beginPath(); ctx.arc(xFor(index), yFor(scoreFor(point)), 3.5, 0, Math.PI * 2); ctx.fillStyle = scoreFor(point) >= 0 ? "#57d9c5" : "#e58aa5"; ctx.fill(); ctx.strokeStyle = "#08101f"; ctx.lineWidth = 1.5; ctx.stroke(); });
       }
 
       function renderAll() {
-        renderBoard(); renderTelemetry(); renderHistory(); renderStatus(); drawEloChart();
+        renderBoard(); renderTelemetry(); renderHistory(); renderStatus(); renderStockfishEval(); drawEvaluationChart();
         const gameIsActive = state.status === "playing";
         $("turnText").textContent = state.turn.toUpperCase(); $("boardMessage").textContent = state.message; $("modePill").textContent = state.status.toUpperCase(); $("providerSelect").value = state.provider; $("colorSelect").value = state.player_color; $("assistRange").value = state.assist_rate; $("runtimeText").textContent = `${state.model_ready ? "checkpoint loaded" : "checkpoint missing"} · ${state.model_device}`;
         $("setupPanel").hidden = gameIsActive; $("settingsButton").hidden = !gameIsActive; $("setupHint").textContent = gameIsActive ? "Provider is locked for this game. Open Game settings to configure the next one." : "Choose your side and engine before starting. The provider stays fixed during a game.";
@@ -368,7 +385,7 @@
       async function loadArchitecture() { try { const data = await (await fetch("/api/architecture")).json(); $("archParams").textContent = `${(data.parameters / 1000000).toFixed(2)}M`; $("archTokens").textContent = data.tokens; $("archWidth").textContent = data.d_model; $("archPolicyFact").textContent = Number(data.policy_outputs).toLocaleString(); $("archDevice").textContent = data.device; $("archCheckpoint").textContent = data.checkpoint_loaded ? "loaded" : "not found"; $("archGeoBias").textContent = Number(data.geometric_attention_bias?.[1] ?? 0).toFixed(3); $("archLayers").textContent = data.layers; $("archHeads").textContent = data.heads; $("archPolicy").textContent = Number(data.policy_outputs).toLocaleString(); } catch (_) {} }
 
       document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => { document.querySelectorAll(".tab-button").forEach((item) => item.classList.remove("active")); document.querySelectorAll(".tab-panel").forEach((item) => item.classList.remove("active")); button.classList.add("active"); $(`tab-${button.dataset.tab}`).classList.add("active"); if (button.dataset.tab === "architecture") loadArchitecture(); }));
-      $("newGameButton").addEventListener("click", startNewGame); $("undoButton").addEventListener("click", undo); $("claimDrawButton").addEventListener("click", claimDraw); $("switchColorButton").addEventListener("click", switchColor); $("settingsButton").addEventListener("click", showSetup); window.addEventListener("resize", drawEloChart);
+      $("newGameButton").addEventListener("click", startNewGame); $("undoButton").addEventListener("click", undo); $("claimDrawButton").addEventListener("click", claimDraw); $("switchColorButton").addEventListener("click", switchColor); $("settingsButton").addEventListener("click", showSetup); window.addEventListener("resize", drawEvaluationChart);
       (async function init() { try { const response = await fetch("/api/state"); state = await response.json(); renderAll(); loadArchitecture(); } catch (error) { showToast("Could not connect to the Flask server.", true); } })();
     </script>
   </body>

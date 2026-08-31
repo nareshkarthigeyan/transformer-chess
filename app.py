@@ -85,6 +85,8 @@ def _new_game_state(player_color="white", provider="hybrid", assist_rate=0.6):
         "in_check": False,
         "history": [],
         "elo_history": [],
+        "stockfish_eval": None,
+        "evaluation_history": [],
         "telemetry": None,
         "message": "Your move. Click a piece, then its destination.",
     }
@@ -242,6 +244,35 @@ def _quality_elo(review):
     return int(round(max(400.0, min(2200.0, estimate))))
 
 
+def _refresh_stockfish_eval():
+    """Evaluate the current board and append one position to the live graph."""
+    if not stockfish_provider.available:
+        game_state["stockfish_eval"] = {
+            "available": False,
+            "warning": "Stockfish is unavailable; install it or set STOCKFISH_PATH.",
+        }
+        return
+    try:
+        evaluation = stockfish_provider.evaluate_position(board)
+    except (FileNotFoundError, chess.engine.EngineError, OSError) as exc:
+        evaluation = {"available": False, "warning": str(exc)}
+    game_state["stockfish_eval"] = evaluation
+    if not evaluation.get("available"):
+        return
+    point = {
+        "ply": len(board.move_stack),
+        "centipawns": evaluation.get("centipawns", 0),
+        "mate": evaluation.get("mate"),
+        "display": evaluation.get("display", "0.00"),
+        "white_win_probability": evaluation.get("white_win_probability", 0.5),
+    }
+    history = game_state["evaluation_history"]
+    if history and history[-1].get("ply") == point["ply"]:
+        history[-1] = point
+    else:
+        history.append(point)
+
+
 def _finish_or_refresh(message=None):
     game_state["fen"] = board.fen()
     game_state["turn"] = "white" if board.turn == chess.WHITE else "black"
@@ -363,6 +394,8 @@ def _engine_turn():
 
 
 def _state_payload():
+    if game_state.get("stockfish_eval") is None:
+        _refresh_stockfish_eval()
     payload = deepcopy(game_state)
     payload.update(
         {
@@ -433,6 +466,7 @@ def api_new_game():
         _finish_or_refresh()
         if player_color == "black":
             _engine_turn()
+        _refresh_stockfish_eval()
         return jsonify(_state_payload())
 
 
@@ -449,6 +483,7 @@ def api_switch_color():
         if game_state["status"] != "finished" and game_state["turn"] != new_color:
             _engine_turn()
             game_state["message"] = f"{switch_message} {game_state['message']}"
+        _refresh_stockfish_eval()
         return jsonify(_state_payload())
 
 
@@ -496,6 +531,7 @@ def api_move():
                     "quality": move_review.get("quality"),
                 }
             )
+        _refresh_stockfish_eval()
         return jsonify(_state_payload())
 
 
@@ -513,8 +549,12 @@ def api_undo():
         game_state["elo_history"] = [
             point for point in game_state["elo_history"] if point.get("ply", 0) <= current_ply
         ]
+        game_state["evaluation_history"] = [
+            point for point in game_state["evaluation_history"] if point.get("ply", 0) <= current_ply
+        ]
         game_state["telemetry"] = None
         _finish_or_refresh("Undid the last turn.")
+        _refresh_stockfish_eval()
         return jsonify(_state_payload())
 
 
@@ -530,6 +570,7 @@ def api_claim_draw():
         game_state["claimable_draw"] = False
         game_state["claimable_draw_reason"] = None
         game_state["message"] = game_state["game_over_reason"]
+        _refresh_stockfish_eval()
         return jsonify(_state_payload())
 
 
