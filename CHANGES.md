@@ -10,6 +10,10 @@
 - Added a mid-game switch-side control that preserves the board and lets the
   engine make the intervening move when needed.
 - Added a compact in-game Logic Lens alongside the full Lens tab.
+- Added an automatic root-level `processed_dataset.sql` snapshot. It is a
+  bounded, SQLite-compatible preview of processed FENs, board/state features,
+  legal-move masks, and Stockfish teacher policy rows generated immediately
+  before training.
 - Added a dark, color-coded browser layout with clearer board coordinates,
   selected/last-move/check highlights, and responsive panels.
 - Interactive games now continue through claimable threefold/50-move draws;

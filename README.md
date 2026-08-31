@@ -77,6 +77,27 @@ much slower depth-15 job.
 | `logs/training.log.txt` | Human-readable timestamped training journal |
 | `logs/training_metrics.jsonl` | One machine-readable train/validation record per epoch |
 | `reports/training_summary.json` | Compact final training summary |
+| `processed_dataset.sql` | SQLite-compatible preview of model-ready FEN rows and teacher targets |
+
+`processed_dataset.sql` is regenerated automatically after the NumPy cache is
+loaded and immediately before the first training stage. It contains the schema
+and a bounded preview (100 rows by default) across four tables:
+`dataset_metadata`, `processed_positions`, `legal_move_mask`, and
+`teacher_policy`. Each position shows the original FEN, 64-square board token
+array, state features, human/teacher move IDs, Stockfish value, curriculum
+flags, and legal/soft-policy targets. To inspect it in SQLite:
+
+```bash
+sqlite3 processed_dataset.db < processed_dataset.sql
+sqlite3 processed_dataset.db "SELECT position_id, fen, teacher_move_id, teacher_value FROM processed_positions LIMIT 5;"
+```
+
+To generate a larger or schema-only snapshot manually:
+
+```bash
+python export_dataset_sql.py --dataset data/stockfish_distilled_dataset.npz --rows 500
+python export_dataset_sql.py --dataset data/stockfish_distilled_dataset.npz --rows 0
+```
 
 If a Colab session disconnects, rerun exactly the same command. Dataset
 labelling continues from the partial cache and training continues from the
@@ -155,6 +176,9 @@ python run_train.py --preset strong --rebuild-dataset
 
 # Download the default five-player corpus explicitly
 python scripts/download_lichess_games.py --games-per-user 1000 --output-dir data
+
+# Export the processed cache without starting model training
+python export_dataset_sql.py --dataset data/stockfish_distilled_dataset.npz
 
 # Inspect one model checkpoint through the UI
 CHECKPOINT_PATH=checkpoints/best.pt bash scripts/run_web.sh

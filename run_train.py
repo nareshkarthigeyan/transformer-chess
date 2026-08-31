@@ -21,6 +21,7 @@ from src.data_loader import (
     build_stockfish_distilled_dataset,
     upgrade_dataset_cache,
 )
+from src.sql_export import DEFAULT_SQL_PREVIEW_PATH, DEFAULT_SQL_PREVIEW_ROWS, export_dataset_sql
 from src.model import ChessTransformer
 from src.train import (
     collect_hard_example_weights,
@@ -140,6 +141,17 @@ def parse_args(argv=None):
     parser.add_argument("--log-every", type=int, default=25)
     parser.add_argument("--log-path", default="logs/training.log.txt")
     parser.add_argument("--metrics-path", default="logs/training_metrics.jsonl")
+    parser.add_argument(
+        "--sql-preview-path",
+        default=DEFAULT_SQL_PREVIEW_PATH,
+        help="SQLite SQL snapshot written after preprocessing and before training.",
+    )
+    parser.add_argument(
+        "--sql-preview-rows",
+        type=int,
+        default=DEFAULT_SQL_PREVIEW_ROWS,
+        help="Number of processed positions to include in the SQL snapshot (0 keeps schema only).",
+    )
     parser.add_argument("--train-only", action="store_true", help="Fail if the cache is absent or stale instead of building it.")
     return parser.parse_args(argv)
 
@@ -334,6 +346,17 @@ def main(argv=None):
 
     dataset = ChessNumpyDataset(args.dataset_path)
     metadata = dataset.metadata
+    if args.sql_preview_rows < 0:
+        raise ValueError("--sql-preview-rows must be non-negative")
+    sql_preview_path = export_dataset_sql(
+        args.dataset_path,
+        output_path=args.sql_preview_path,
+        preview_rows=args.sql_preview_rows,
+    )
+    logger.write(
+        f"SQL data preview exported rows={min(args.sql_preview_rows, len(dataset)):,} "
+        f"of {len(dataset):,} path={sql_preview_path}"
+    )
     logger.write(
         f"dataset loaded positions={len(dataset):,} games={metadata.get('total_games', len(np.unique(dataset.game_ids))):,} "
         f"tactical={metadata.get('tactical_positions', 'n/a')} endgame={metadata.get('endgame_positions', 'n/a')} "
